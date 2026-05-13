@@ -35,3 +35,6 @@ buck-out/
 *.swo
 *~
 .vscode/
+
+# AI
+.gemini/
