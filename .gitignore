@@ -1,0 +1,37 @@
+# OSX
+.DS_Store
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+yarn-debug.log
+
+# Android
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+*.iml
+.idea/
+
+# iOS (not used, but just in case)
+ios/Pods/
+ios/build/
+
+# Buck
+buck-out/
+\.buckd/
+
+# Metro
+.metro-health-check*
+
+# Env
+.env
+.env.*
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
