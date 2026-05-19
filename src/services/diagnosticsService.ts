@@ -88,6 +88,11 @@ export function formatDiagnostics(
 ): Array<{label: string; value: string; isWarning: boolean}> {
   const items = [
     {
+      label: 'Device',
+      value: formatDeviceLabel(diag),
+      isWarning: false,
+    },
+    {
       label: 'VPN Permission',
       value: diag.vpnPermissionGranted ? 'Granted' : 'Not granted',
       isWarning: !diag.vpnPermissionGranted,
@@ -192,4 +197,47 @@ export function formatDiagnostics(
   });
 
   return items;
+}
+
+export function buildDiagnosticsReport(diag: VpnDiagnosticResult): string {
+  const lines = [
+    'KernelVPN Diagnostics',
+    `Device: ${formatDeviceLabel(diag)}`,
+    `VPN Permission: ${diag.vpnPermissionGranted ? 'Granted' : 'Not granted'}`,
+    `VPN Service: ${diag.serviceRunning ? 'Running' : 'Stopped'}`,
+    `Core Integrated: ${diag.coreIntegrated ? 'Yes' : 'No'}`,
+    `VPN Core: ${diag.coreRunning ? 'Running' : 'Not started'}`,
+    `Active Profile: ${diag.activeProfileName ?? 'None'}`,
+    `Protocol: ${diag.selectedProtocol ?? 'Unknown'}`,
+    `Split Tunnel: ${diag.splitTunnelMode ?? 'unknown'} · ${
+      diag.splitTunnelRuleCount ?? 0
+    } app rule(s)`,
+    `3X-UI Panel: ${diag.panelConnectionStatus ?? 'Unknown'}`,
+    `Battery: ${diag.batteryOptimizationWarning ? 'Optimization enabled' : 'OK'}`,
+    `Last Error: ${diag.lastError ?? 'None'}`,
+    `Last Core Error: ${diag.lastCoreError ?? 'None'}`,
+    `Last Connection Error: ${diag.lastConnectionError ?? 'None'}`,
+    `Snapshot: ${new Date(diag.timestamp).toISOString()}`,
+    '',
+    'Quick checks:',
+    '- If VPN Core is Running but sites fail, open https://ifconfig.me in Chrome.',
+    '- On OnePlus, set Battery -> KernelVPN -> Unrestricted.',
+    '- If Chrome fails but Telegram works, close Chrome fully and reopen it to drop cached QUIC/UDP sessions.',
+    '- If VPN Permission is not granted or VPN Core is Not started, reconnect inside KernelVPN and grant Android VPN permission.',
+  ];
+
+  return lines.join('\n');
+}
+
+function formatDeviceLabel(diag: VpnDiagnosticResult): string {
+  const device = [diag.deviceManufacturer, diag.deviceModel]
+    .filter(Boolean)
+    .join(' ');
+  const android = diag.androidVersion;
+
+  if (device && android) {
+    return `${device} · ${android}`;
+  }
+
+  return device || android || 'Unknown';
 }

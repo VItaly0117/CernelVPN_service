@@ -56,6 +56,9 @@ export interface VpnDiagnosticResult {
   coreRunning: boolean;
   activeProfileName?: string;
   selectedProtocol?: string;
+  deviceManufacturer?: string;
+  deviceModel?: string;
+  androidVersion?: string;
   splitTunnelMode?: SplitTunnelMode;
   splitTunnelRuleCount?: number;
   lastError?: string;

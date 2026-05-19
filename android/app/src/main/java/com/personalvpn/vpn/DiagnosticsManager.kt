@@ -1,6 +1,7 @@
 package com.personalvpn.vpn
 
 import android.content.Context
+import android.os.Build
 import android.os.PowerManager
 import android.util.Log
 
@@ -20,6 +21,9 @@ class DiagnosticsManager(private val context: Context) {
         val coreRunning: Boolean,
         val activeProfileName: String?,
         val selectedProtocol: String?,
+        val deviceManufacturer: String,
+        val deviceModel: String,
+        val androidVersion: String,
         val splitTunnelMode: String,
         val splitTunnelRuleCount: Int,
         val lastError: String?,
@@ -55,6 +59,9 @@ class DiagnosticsManager(private val context: Context) {
             coreRunning = coreRunning,
             activeProfileName = activeProfileName,
             selectedProtocol = selectedProtocol,
+            deviceManufacturer = Build.MANUFACTURER ?: "unknown",
+            deviceModel = Build.MODEL ?: "unknown",
+            androidVersion = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})",
             splitTunnelMode = splitTunnelMode,
             splitTunnelRuleCount = splitTunnelRuleCount,
             lastError = lastError,

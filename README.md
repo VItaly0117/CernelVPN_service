@@ -151,6 +151,11 @@ Reality clients from inbounds, and request Xray stop/restart.
    - Active Profile and Protocol are correct
    - 3X-UI Panel is Connected if configured
    - Panel Xray is Running if the server is healthy
+6. If a remote tester cannot capture `adb logcat`, ask them to open
+   Diagnostics -> Share Diagnostics Report and send the generated text. The
+   report includes device model, Android version, service/core state, split
+   tunnel state, battery warning, and last native/core error without exposing
+   profile secrets.
 
 The app should not show `Connected` if libbox rejects the config or fails to
 open TUN. In that case, Diagnostics and logcat should show the core/connection
