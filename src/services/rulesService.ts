@@ -10,6 +10,7 @@
  *   - TODO: Pin the manifest URL and add certificate pinning.
  */
 import type {RulesManifest} from '../types/vpn';
+import {vpnStore} from '../store/vpnStore';
 
 // ---------------------------------------------------------------------------
 // Demo / Mock data
@@ -62,13 +63,13 @@ export async function fetchRulesManifest(
  * Validate a rules manifest for required fields and version compatibility.
  */
 export function validateRulesManifest(manifest: RulesManifest): boolean {
-  if (!manifest) return false;
-  if (typeof manifest.version !== 'number' || manifest.version < 1) return false;
-  if (!manifest.updatedAt) return false;
-  if (!manifest.rules) return false;
-  if (!Array.isArray(manifest.rules.directApps)) return false;
-  if (!Array.isArray(manifest.rules.directDomains)) return false;
-  if (!Array.isArray(manifest.rules.proxyDomains)) return false;
+  if (!manifest) {return false;}
+  if (typeof manifest.version !== 'number' || manifest.version < 1) {return false;}
+  if (!manifest.updatedAt) {return false;}
+  if (!manifest.rules) {return false;}
+  if (!Array.isArray(manifest.rules.directApps)) {return false;}
+  if (!Array.isArray(manifest.rules.directDomains)) {return false;}
+  if (!Array.isArray(manifest.rules.proxyDomains)) {return false;}
 
   // TODO: Verify Ed25519 signature
   // if (manifest.signature) {
@@ -90,10 +91,19 @@ export async function applyRulesManifest(
     throw new Error('Invalid rules manifest');
   }
 
+  const directApps = new Set(manifest.rules.directApps);
+  const current = vpnStore.getState().splitTunnelRules;
+  if (current.length > 0) {
+    vpnStore.setSplitTunnelRules(
+      current.map(rule =>
+        directApps.has(rule.packageName) ? {...rule, enabled: true} : rule,
+      ),
+    );
+  }
+  vpnStore.setLastRulesUpdate(Date.now());
+
   // TODO: Persist to storage
-  // TODO: Propagate directApps to split tunneling rules
   // TODO: Propagate domain rules to core config
-  // TODO: Track last update timestamp
 
   console.log(
     `[RulesService] Applied manifest v${manifest.version} ` +

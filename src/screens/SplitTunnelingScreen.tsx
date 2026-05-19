@@ -1,7 +1,7 @@
 /**
- * SplitTunnelingScreen — Choose which apps go through VPN.
+ * SplitTunnelingScreen — Choose which apps go through KernelVPN.
  */
-import React, {useState, useEffect, useCallback} from 'react';
+import React, {memo, useState, useEffect, useCallback, useMemo} from 'react';
 import {
   View,
   Text,
@@ -11,10 +11,12 @@ import {
   TouchableOpacity,
   SafeAreaView,
   ActivityIndicator,
+  TextInput,
 } from 'react-native';
 import * as NativeVpn from '../native/NativeVpn';
 import {vpnStore, useVpnStore} from '../store/vpnStore';
-import type {InstalledAppInfo, SplitTunnelRule, SplitTunnelMode} from '../types/vpn';
+import type {SplitTunnelRule, SplitTunnelMode} from '../types/vpn';
+import {useResolvedTheme, type AppTheme} from '../theme/theme';
 
 interface Props {
   onBack: () => void;
@@ -22,11 +24,11 @@ interface Props {
 
 export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
   const storeState = useVpnStore();
-  const [apps, setApps] = useState<InstalledAppInfo[]>([]);
+  const theme = useResolvedTheme(storeState.themeMode);
+  const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Load installed apps
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -35,8 +37,6 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
         setError(null);
         const installed = await NativeVpn.getInstalledApps();
         if (!cancelled) {
-          setApps(installed);
-          // Initialize rules for new apps
           const existingPkgs = new Set(
             storeState.splitTunnelRules.map(r => r.packageName),
           );
@@ -45,7 +45,7 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
             .map(app => ({
               packageName: app.packageName,
               appName: app.appName,
-              routing: 'proxy' as const,
+              routing: 'proxy',
               enabled: false,
             }));
           if (newRules.length > 0) {
@@ -64,27 +64,24 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
           );
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {setLoading(false);}
       }
     })();
     return () => {
       cancelled = true;
     };
+    // Load once when the screen opens; rules update through the store.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const toggleMode = useCallback(() => {
-    const newMode: SplitTunnelMode =
-      storeState.splitTunnelMode === 'vpn_all_except_selected'
-        ? 'vpn_selected_only'
-        : 'vpn_all_except_selected';
-    vpnStore.setSplitTunnelMode(newMode);
-  }, [storeState.splitTunnelMode]);
+  const setMode = useCallback((mode: SplitTunnelMode) => {
+    vpnStore.setSplitTunnelMode(mode);
+  }, []);
 
   const toggleApp = useCallback(
     (packageName: string) => {
       const rule = storeState.splitTunnelRules.find(
-        r => r.packageName === packageName,
+        item => item.packageName === packageName,
       );
       if (rule) {
         vpnStore.updateSplitTunnelRule(packageName, {enabled: !rule.enabled});
@@ -93,70 +90,127 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
     [storeState.splitTunnelRules],
   );
 
-  const modeLabel =
-    storeState.splitTunnelMode === 'vpn_all_except_selected'
-      ? 'All traffic via VPN, selected apps go direct'
-      : 'Only selected apps go through VPN';
+  const filteredRules = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) {return storeState.splitTunnelRules;}
+    return storeState.splitTunnelRules.filter(
+      rule =>
+        rule.appName.toLowerCase().includes(needle) ||
+        rule.packageName.toLowerCase().includes(needle),
+    );
+  }, [query, storeState.splitTunnelRules]);
 
-  const renderApp = ({item}: {item: SplitTunnelRule}) => (
-    <View style={styles.appRow}>
-      <View style={styles.appInfo}>
-        <Text style={styles.appName} numberOfLines={1}>
-          {item.appName}
-        </Text>
-        <Text style={styles.packageName} numberOfLines={1}>
-          {item.packageName}
-        </Text>
-      </View>
-      <Switch
-        value={item.enabled}
-        onValueChange={() => toggleApp(item.packageName)}
-        trackColor={{false: '#334155', true: '#3B82F6'}}
-        thumbColor={item.enabled ? '#FFFFFF' : '#94A3B8'}
-      />
-    </View>
+  const selectedCount = storeState.splitTunnelRules.filter(
+    rule => rule.enabled,
+  ).length;
+
+  const renderApp = useCallback(
+    ({item}: {item: SplitTunnelRule}) => (
+      <AppRuleRow rule={item} theme={theme} onToggle={toggleApp} />
+    ),
+    [theme, toggleApp],
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
+    <SafeAreaView
+      style={[styles.container, {backgroundColor: theme.colors.background}]}>
       <View style={styles.headerRow}>
         <TouchableOpacity onPress={onBack} style={styles.backButton}>
-          <Text style={styles.backText}>← Back</Text>
+          <Text style={[styles.backText, {color: theme.colors.primary}]}>
+            Back
+          </Text>
         </TouchableOpacity>
-        <Text style={styles.title}>Split Tunneling</Text>
+        <Text style={[styles.title, {color: theme.colors.text}]}>
+          Split Tunneling
+        </Text>
         <View style={styles.backButton} />
       </View>
 
-      {/* Mode toggle */}
-      <TouchableOpacity style={styles.modeCard} onPress={toggleMode}>
-        <Text style={styles.modeLabel}>Mode</Text>
-        <Text style={styles.modeValue}>{modeLabel}</Text>
-        <Text style={styles.modeTap}>Tap to switch</Text>
-      </TouchableOpacity>
+      <View
+        style={[
+          styles.modeCard,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.separator,
+          },
+        ]}>
+        <Text style={[styles.modeLabel, {color: theme.colors.tertiaryText}]}>
+          Routing mode
+        </Text>
+        <View style={[styles.segment, {backgroundColor: theme.colors.background}]}>
+          <ModeButton
+            label="All except"
+            selected={storeState.splitTunnelMode === 'vpn_all_except_selected'}
+            theme={theme}
+            onPress={() => setMode('vpn_all_except_selected')}
+          />
+          <ModeButton
+            label="Selected only"
+            selected={storeState.splitTunnelMode === 'vpn_selected_only'}
+            theme={theme}
+            onPress={() => setMode('vpn_selected_only')}
+          />
+        </View>
+        <Text style={[styles.modeHint, {color: theme.colors.secondaryText}]}>
+          {selectedCount} selected app{selectedCount === 1 ? '' : 's'}
+        </Text>
+      </View>
 
-      {/* Content */}
+      <TextInput
+        style={[
+          styles.search,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.separator,
+            color: theme.colors.text,
+          },
+        ]}
+        value={query}
+        onChangeText={setQuery}
+        placeholder="Search apps"
+        placeholderTextColor={theme.colors.tertiaryText}
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+
       {loading && (
         <View style={styles.centerBox}>
-          <ActivityIndicator size="large" color="#3B82F6" />
-          <Text style={styles.loadingText}>Loading installed apps…</Text>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={[styles.loadingText, {color: theme.colors.secondaryText}]}>
+            Loading installed apps…
+          </Text>
         </View>
       )}
 
       {error && (
-        <View style={styles.errorCard}>
-          <Text style={styles.errorText}>{error}</Text>
+        <View
+          style={[
+            styles.errorCard,
+            {
+              backgroundColor: theme.colors.dangerSoft,
+              borderColor: theme.colors.danger,
+            },
+          ]}>
+          <Text style={[styles.errorText, {color: theme.colors.danger}]}>
+            {error}
+          </Text>
         </View>
       )}
 
       {!loading && !error && (
         <FlatList
-          data={storeState.splitTunnelRules}
+          data={filteredRules}
           keyExtractor={item => item.packageName}
           renderItem={renderApp}
           contentContainerStyle={styles.listContent}
+          initialNumToRender={18}
+          maxToRenderPerBatch={18}
+          windowSize={7}
+          removeClippedSubviews
           ListEmptyComponent={
-            <Text style={styles.emptyText}>No apps found</Text>
+            <Text style={[styles.emptyText, {color: theme.colors.tertiaryText}]}>
+              No apps found
+            </Text>
           }
         />
       )}
@@ -164,10 +218,77 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
   );
 }
 
+const AppRuleRow = memo(function AppRuleRow({
+  rule,
+  theme,
+  onToggle,
+}: {
+  rule: SplitTunnelRule;
+  theme: AppTheme;
+  onToggle: (packageName: string) => void;
+}) {
+  return (
+    <View
+      style={[
+        styles.appRow,
+        {
+          backgroundColor: theme.colors.surface,
+          borderColor: theme.colors.separator,
+        },
+      ]}>
+      <View style={styles.appInfo}>
+        <Text style={[styles.appName, {color: theme.colors.text}]} numberOfLines={1}>
+          {rule.appName}
+        </Text>
+        <Text
+          style={[styles.packageName, {color: theme.colors.tertiaryText}]}
+          numberOfLines={1}>
+          {rule.packageName}
+        </Text>
+      </View>
+      <Switch
+        value={rule.enabled}
+        onValueChange={() => onToggle(rule.packageName)}
+        trackColor={{
+          false: theme.isDark ? '#30343D' : '#D7DCE3',
+          true: theme.colors.primary,
+        }}
+        thumbColor="#FFFFFF"
+      />
+    </View>
+  );
+});
+
+function ModeButton({
+  label,
+  selected,
+  theme,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  theme: AppTheme;
+  onPress: () => void;
+}): React.JSX.Element {
+  return (
+    <TouchableOpacity
+      style={[styles.modeButton, selected && {backgroundColor: theme.colors.primary}]}
+      onPress={onPress}
+      activeOpacity={0.78}>
+      <Text
+        style={[
+          styles.modeButtonText,
+          {color: selected ? '#FFFFFF' : theme.colors.secondaryText},
+        ]}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F0F1A',
   },
   headerRow: {
     flexDirection: 'row',
@@ -181,39 +302,56 @@ const styles = StyleSheet.create({
   },
   backText: {
     fontSize: 16,
-    color: '#3B82F6',
-    fontWeight: '600',
+    fontWeight: '700',
   },
   title: {
     fontSize: 20,
-    fontWeight: '700',
-    color: '#F1F5F9',
+    fontWeight: '800',
     textAlign: 'center',
   },
   modeCard: {
-    backgroundColor: '#1E1E2E',
-    borderRadius: 12,
+    borderRadius: 16,
     marginHorizontal: 16,
     marginVertical: 8,
-    padding: 16,
+    padding: 14,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   modeLabel: {
     fontSize: 12,
-    fontWeight: '600',
-    color: '#64748B',
+    fontWeight: '800',
     textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 4,
+    marginBottom: 10,
   },
-  modeValue: {
-    fontSize: 15,
-    color: '#F1F5F9',
+  segment: {
+    flexDirection: 'row',
+    borderRadius: 13,
+    padding: 4,
+  },
+  modeButton: {
+    flex: 1,
+    minHeight: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+  },
+  modeButtonText: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  modeHint: {
+    fontSize: 13,
     fontWeight: '600',
+    marginTop: 10,
   },
-  modeTap: {
-    fontSize: 12,
-    color: '#3B82F6',
-    marginTop: 6,
+  search: {
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 8,
+    paddingHorizontal: 14,
+    minHeight: 44,
+    fontSize: 15,
   },
   centerBox: {
     flex: 1,
@@ -221,20 +359,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    color: '#94A3B8',
     marginTop: 12,
     fontSize: 14,
   },
   errorCard: {
-    backgroundColor: '#2D1B1B',
-    borderRadius: 12,
+    borderRadius: 14,
     marginHorizontal: 16,
     marginTop: 16,
     padding: 16,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   errorText: {
-    color: '#FCA5A5',
     fontSize: 14,
+    fontWeight: '700',
   },
   listContent: {
     paddingHorizontal: 16,
@@ -244,11 +381,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#1E1E2E',
-    borderRadius: 10,
+    borderRadius: 14,
     paddingVertical: 12,
     paddingHorizontal: 14,
     marginVertical: 3,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   appInfo: {
     flex: 1,
@@ -256,17 +393,14 @@ const styles = StyleSheet.create({
   },
   appName: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#F1F5F9',
+    fontWeight: '700',
   },
   packageName: {
     fontSize: 11,
-    color: '#64748B',
     fontFamily: 'monospace',
     marginTop: 2,
   },
   emptyText: {
-    color: '#64748B',
     textAlign: 'center',
     marginTop: 40,
     fontSize: 14,

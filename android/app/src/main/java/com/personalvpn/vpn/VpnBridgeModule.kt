@@ -3,6 +3,8 @@ package com.personalvpn.vpn
 import android.app.Activity
 import android.content.Intent
 import android.net.VpnService
+import android.net.Uri
+import android.provider.Settings
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.facebook.react.bridge.*
@@ -25,6 +27,8 @@ class VpnBridgeModule(reactContext: ReactApplicationContext) :
 
         private const val EVENT_STATUS_CHANGED = "VpnStatusChanged"
         private const val EVENT_ERROR = "VpnError"
+        private const val PREFS_NAME = "kernelvpn_state"
+        private const val PREF_APP_STATE = "persisted_state"
     }
 
     private var vpnPermissionPromise: Promise? = null
@@ -74,10 +78,10 @@ class VpnBridgeModule(reactContext: ReactApplicationContext) :
     }
 
     /**
-     * Start the VPN service with the given profile JSON.
+     * Start the VPN service with profile and routing payload JSON.
      */
     @ReactMethod
-    fun startVpn(profileJson: String, promise: Promise) {
+    fun startVpn(startPayloadJson: String, promise: Promise) {
         try {
             val context = reactApplicationContext
 
@@ -90,7 +94,7 @@ class VpnBridgeModule(reactContext: ReactApplicationContext) :
 
             val serviceIntent = Intent(context, PersonalVpnService::class.java).apply {
                 action = PersonalVpnService.ACTION_START
-                putExtra(PersonalVpnService.EXTRA_PROFILE_JSON, profileJson)
+                putExtra(PersonalVpnService.EXTRA_START_PAYLOAD_JSON, startPayloadJson)
             }
 
             ContextCompat.startForegroundService(context, serviceIntent)
@@ -99,6 +103,58 @@ class VpnBridgeModule(reactContext: ReactApplicationContext) :
         } catch (e: Exception) {
             Log.e(TAG, "Error starting VPN", e)
             promise.reject("START_ERROR", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun savePersistedState(stateJson: String, promise: Promise) {
+        try {
+            reactApplicationContext
+                .getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
+                .edit()
+                .putString(PREF_APP_STATE, stateJson)
+                .apply()
+            promise.resolve(null)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving persisted state", e)
+            promise.reject("PERSIST_SAVE_ERROR", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun loadPersistedState(promise: Promise) {
+        try {
+            val stateJson = reactApplicationContext
+                .getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
+                .getString(PREF_APP_STATE, null)
+            promise.resolve(stateJson)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading persisted state", e)
+            promise.reject("PERSIST_LOAD_ERROR", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun openBatteryOptimizationSettings(promise: Promise) {
+        try {
+            val context = reactApplicationContext
+            val packageUri = Uri.parse("package:${context.packageName}")
+            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = packageUri
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            try {
+                context.startActivity(intent)
+            } catch (requestError: Exception) {
+                val fallback = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(fallback)
+            }
+            promise.resolve(null)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error opening battery optimization settings", e)
+            promise.reject("BATTERY_SETTINGS_ERROR", e.message, e)
         }
     }
 
@@ -146,7 +202,10 @@ class VpnBridgeModule(reactContext: ReactApplicationContext) :
             val map = Arguments.createMap().apply {
                 putBoolean("vpnPermissionGranted", result.vpnPermissionGranted)
                 putBoolean("serviceRunning", result.serviceRunning)
+                putBoolean("coreIntegrated", result.coreIntegrated)
                 putBoolean("coreRunning", result.coreRunning)
+                putString("splitTunnelMode", result.splitTunnelMode)
+                putInt("splitTunnelRuleCount", result.splitTunnelRuleCount)
                 putString("lastError", result.lastError)
                 putString("batteryOptimizationWarning", result.batteryOptimizationWarning)
                 putDouble("timestamp", result.timestamp.toDouble())

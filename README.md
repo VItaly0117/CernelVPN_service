@@ -1,8 +1,8 @@
-# Personal VPN — Android VPN Client Skeleton
+# KernelVPN — Android VPN Client Prototype
 
 An Android-only React Native application providing a clean technical foundation
-for a personal VPN client. Supports importing proxy/VPN protocol links
-(VLESS/REALITY, with future VMess, Trojan, Shadowsocks support) and managing
+for KernelVPN. Supports importing proxy/VPN protocol links
+(VLESS/REALITY, VMess, Trojan, and Shadowsocks) and managing
 connections through an Android VpnService.
 
 > **Stage:** MVP skeleton — no real traffic routing yet. The VPN tunnel interface
@@ -70,41 +70,38 @@ android/app/src/main/java/com/personalvpn/
 
 ---
 
-## What's Implemented (v0.1.0)
+## What's Implemented (v0.3.0)
 
 | Feature | Status |
 |---|---|
 | React Native project structure | ✅ |
 | TypeScript types (VpnStatus, VpnProfile, etc.) | ✅ |
 | NativeModules bridge (JS ↔ Kotlin) | ✅ |
-| Home screen with connect button | ✅ |
+| Apple-like Home screen with theme switching | ✅ |
 | Import profile screen (VLESS parser) | ✅ |
-| Split tunneling screen (UI + mode toggle) | ✅ |
+| Split tunneling screen (search + mode toggle) | ✅ |
 | Diagnostics screen | ✅ |
 | Android VpnService skeleton | ✅ |
 | Foreground service + notification | ✅ |
 | VPN permission request flow | ✅ |
 | System VPN indicator | ✅ |
 | Status events (Kotlin → JS) | ✅ |
-| VLESS link parser | ✅ |
+| VLESS, VMess, Trojan, Shadowsocks parsers | ✅ |
 | CoreManager stub | ✅ |
 | ConfigWriter stub | ✅ |
 | Installed apps provider | ✅ |
-| Split tunneling preparation (addAllowed/Disallowed) | ✅ |
+| Native split tunneling application (addAllowed/Disallowed) | ✅ |
 | Remote rules service (mock) | ✅ |
-| In-memory state store | ✅ |
+| Native persistence for profiles, theme, and routing settings | ✅ |
+| Battery optimization settings shortcut | ✅ |
 
 ## What's NOT Implemented Yet
 
 | Feature | Notes |
 |---|---|
 | Real traffic routing via Xray/sing-box | CoreManager is a stub |
-| VMess/Trojan/Shadowsocks parsers | Only VLESS is implemented |
-| Persistent storage | In-memory only |
 | Ed25519 signature verification for rules | TODO in rulesService |
 | Domain-based routing | Needs core integration |
-| Real split tunneling | Rules are prepared, not applied to Builder |
-| Battery optimization prompt | Warning shown but no action |
 
 ---
 
@@ -158,7 +155,7 @@ cd android
 5. Grant the permission.
 6. Observe:
    - 🔑 System VPN key icon appears in the status bar
-   - 📢 Persistent "Personal VPN — Connected" notification
+   - 📢 Persistent "KernelVPN — Connected" notification
    - App shows "Connected" status with green indicator
 7. Tap **Disconnect** to stop the service.
 8. Check **Diagnostics** to verify service state.
@@ -173,12 +170,10 @@ cd android
 1. **sing-box core integration** — Replace CoreManager stub with real sing-box binary,
    pass TUN fd, route traffic through proxy.
 2. **Full VLESS/REALITY support** — Generate proper sing-box configs from parsed profiles.
-3. **Additional protocols** — VMess, Trojan, Shadowsocks parsers and config generation.
-4. **Split tunneling** — Apply stored rules to VpnService.Builder on each connect.
-5. **Persistent storage** — AsyncStorage or MMKV for profiles, rules, preferences.
-6. **Remote signed rules** — Ed25519 signature verification for rule manifests.
-7. **Diagnostics improvements** — Battery optimization prompt, core health monitoring.
-8. **OnePlus stability checklist** — Test background service persistence,
+3. **Core config generation** — Convert parsed VLESS, VMess, Trojan, and Shadowsocks profiles into sing-box/Xray configs.
+4. **Remote signed rules** — Ed25519 signature verification for rule manifests.
+5. **Diagnostics improvements** — core health monitoring once a real core is bundled.
+6. **OnePlus stability checklist** — Test background service persistence,
    battery optimization whitelisting, wake locks if needed.
 
 ---
@@ -191,6 +186,50 @@ cd android
 - No real server credentials in source code — demo/mock data only.
 - Remote updates are JSON rules only — no code execution.
 - Future: Ed25519 signature verification for all remote manifests.
+
+---
+
+## Android physical device test
+
+Run these commands to test on a physical Android device:
+
+```bash
+npm install
+cd android
+./gradlew clean
+./gradlew assembleDebug
+cd ..
+adb devices
+adb uninstall com.kernelvpn
+adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+adb shell monkey -p com.kernelvpn 1
+```
+
+### Logcat commands
+
+**macOS/Linux:**
+```bash
+adb logcat -c
+adb shell monkey -p com.kernelvpn 1
+adb logcat -d | grep -iE "FATAL EXCEPTION|AndroidRuntime|ReactNative|SecurityException|VpnService|ForegroundService|KernelVPN"
+```
+
+**Windows:**
+```cmd
+adb logcat -c
+adb shell monkey -p com.kernelvpn 1
+adb logcat -d | findstr /i "FATAL EXCEPTION AndroidRuntime ReactNative SecurityException VpnService ForegroundService KernelVPN"
+```
+
+---
+
+## Known limitations
+
+- Real Xray/sing-box core is not integrated yet.
+- Full-tunnel routing is disabled in skeleton mode to avoid blackholing traffic.
+- Split tunneling app rules are applied to `VpnService.Builder`, but real traffic still depends on core integration.
+- Remote rules are mock/demo only.
+- Release APK signing is not configured yet.
 
 ---
 

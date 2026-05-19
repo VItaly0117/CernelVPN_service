@@ -7,6 +7,7 @@
 import * as NativeVpn from '../native/NativeVpn';
 import type {VpnStatus, VpnProfile, VpnDiagnosticResult} from '../types/vpn';
 import {vpnStore} from '../store/vpnStore';
+import {createVpnStartPayload} from './vpnStartPayload';
 
 // ---------------------------------------------------------------------------
 // Connection lifecycle
@@ -18,6 +19,17 @@ import {vpnStore} from '../store/vpnStore';
  */
 export async function connect(profile: VpnProfile): Promise<void> {
   try {
+    const state = vpnStore.getState();
+    const enabledSplitRules = state.splitTunnelRules.filter(rule => rule.enabled);
+    if (
+      state.splitTunnelMode === 'vpn_selected_only' &&
+      enabledSplitRules.length === 0
+    ) {
+      throw new Error(
+        'Split tunneling is set to selected apps only. Select at least one app before connecting.',
+      );
+    }
+
     vpnStore.setStatus('connecting');
     vpnStore.setLastError(null);
 
@@ -29,9 +41,13 @@ export async function connect(profile: VpnProfile): Promise<void> {
       return;
     }
 
-    // 2. Start VPN service with profile
-    const profileJson = JSON.stringify(profile);
-    await NativeVpn.startVpn(profileJson);
+    // 2. Start VPN service with profile and routing rules
+    const payload = createVpnStartPayload({
+      profile,
+      splitTunnelMode: state.splitTunnelMode,
+      splitTunnelRules: enabledSplitRules,
+    });
+    await NativeVpn.startVpn(JSON.stringify(payload));
 
     // Status will be updated via the native event listener
     // but set a fallback in case the event is delayed

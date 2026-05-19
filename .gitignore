@@ -6,10 +6,12 @@ node_modules/
 npm-debug.log
 yarn-error.log
 yarn-debug.log
+*.log
 
 # Android
 android/.gradle/
 android/app/build/
+android/app/.cxx/
 android/build/
 android/local.properties
 *.iml

@@ -16,7 +16,10 @@ class DiagnosticsManager(private val context: Context) {
     data class DiagnosticResult(
         val vpnPermissionGranted: Boolean,
         val serviceRunning: Boolean,
+        val coreIntegrated: Boolean,
         val coreRunning: Boolean,
+        val splitTunnelMode: String,
+        val splitTunnelRuleCount: Int,
         val lastError: String?,
         val batteryOptimizationWarning: String?,
         val timestamp: Long
@@ -28,14 +31,20 @@ class DiagnosticsManager(private val context: Context) {
     fun collect(): DiagnosticResult {
         val vpnPermission = checkVpnPermission()
         val serviceRunning = PersonalVpnService.isServiceRunning
+        val coreIntegrated = PersonalVpnService.coreManager?.isCoreIntegrated() ?: false
         val coreRunning = PersonalVpnService.coreManager?.isRunning() ?: false
+        val splitTunnelMode = PersonalVpnService.currentSplitTunnelMode
+        val splitTunnelRuleCount = PersonalVpnService.currentSplitTunnelRuleCount
         val lastError = PersonalVpnService.coreManager?.getLastError()
         val batteryWarning = checkBatteryOptimization()
 
         val result = DiagnosticResult(
             vpnPermissionGranted = vpnPermission,
             serviceRunning = serviceRunning,
+            coreIntegrated = coreIntegrated,
             coreRunning = coreRunning,
+            splitTunnelMode = splitTunnelMode,
+            splitTunnelRuleCount = splitTunnelRuleCount,
             lastError = lastError,
             batteryOptimizationWarning = batteryWarning,
             timestamp = System.currentTimeMillis()

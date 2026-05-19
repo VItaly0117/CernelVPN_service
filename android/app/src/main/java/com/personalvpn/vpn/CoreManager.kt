@@ -15,10 +15,10 @@ class CoreManager {
     }
 
     @Volatile
-    private var running = false
+    private var lastError: String? = "Core is not integrated yet"
 
-    @Volatile
-    private var lastError: String? = null
+    /** Whether the real proxy core is integrated. */
+    fun isCoreIntegrated(): Boolean = false
 
     /**
      * Start the proxy core with the given profile and TUN file descriptor.
@@ -34,21 +34,8 @@ class CoreManager {
         Log.d(TAG, "Profile JSON length: ${profileJson.length}")
         Log.d(TAG, "TUN fd: $tunFd")
 
-        // Simulate successful start
-        running = true
-        lastError = null
-
-        // TODO: Replace with actual core start logic
-        // try {
-        //     val configFile = ConfigWriter(context).writeSingBoxConfig(profileJson)
-        //     singBoxCore.start(configFile.absolutePath, tunFd)
-        //     running = true
-        // } catch (e: Exception) {
-        //     lastError = e.message
-        //     running = false
-        //     return Result.failure(e)
-        // }
-
+        // In skeleton mode, we return success so the VPN lifecycle can proceed
+        // but the core is NOT actually running.
         return Result.success(Unit)
     }
 
@@ -57,15 +44,13 @@ class CoreManager {
      */
     fun stop(): Result<Unit> {
         Log.i(TAG, "stop() called — stub")
-        running = false
-        lastError = null
         return Result.success(Unit)
     }
 
     /**
      * Check if the core is currently running.
      */
-    fun isRunning(): Boolean = running
+    fun isRunning(): Boolean = false
 
     /**
      * Get the last error message, if any.

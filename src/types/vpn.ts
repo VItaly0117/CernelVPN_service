@@ -32,6 +32,8 @@ export interface VpnProfile {
   host: string;
   port: number;
   uuid?: string;
+  password?: string;
+  method?: string;
   sni?: string;
   publicKey?: string;
   shortId?: string;
@@ -50,7 +52,10 @@ export interface VpnProfile {
 export interface VpnDiagnosticResult {
   vpnPermissionGranted: boolean;
   serviceRunning: boolean;
+  coreIntegrated: boolean;
   coreRunning: boolean;
+  splitTunnelMode?: SplitTunnelMode;
+  splitTunnelRuleCount?: number;
   lastError?: string;
   batteryOptimizationWarning?: string;
   timestamp: number; // epoch ms
@@ -78,6 +83,30 @@ export interface SplitTunnelRule {
   appName: string;
   routing: SplitTunnelRouting;
   enabled: boolean;
+}
+
+export interface VpnStartPayload {
+  profile: VpnProfile;
+  splitTunnelMode: SplitTunnelMode;
+  splitTunnelRules: SplitTunnelRule[];
+}
+
+export interface PersistedVpnState {
+  savedProfiles: VpnProfile[];
+  activeProfileId: string | null;
+  splitTunnelMode: SplitTunnelMode;
+  splitTunnelRules: SplitTunnelRule[];
+  lastRulesUpdate: number | null;
+  themeMode: import('../theme/theme').ThemeMode;
+  panelSettings: PanelSettings | null;
+}
+
+export interface PanelSettings {
+  panelUrl: string;
+  username?: string;
+  password?: string;
+  sessionCookie?: string;
+  lastStatusAt?: number | null;
 }
 
 /**

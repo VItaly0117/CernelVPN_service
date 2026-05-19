@@ -5,6 +5,6 @@ extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
     ex.autolinkLibrariesFromCommand()
 }
 
-rootProject.name = 'PersonalVPN'
+rootProject.name = 'KernelVPN'
 include ':app'
 includeBuild('../node_modules/@react-native/gradle-plugin')

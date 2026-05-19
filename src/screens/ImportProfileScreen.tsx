@@ -15,14 +15,17 @@ import {
   Platform,
 } from 'react-native';
 import {parseProfileLink, isProfileValid} from '../services/profileParser';
-import {vpnStore} from '../store/vpnStore';
+import {vpnStore, useVpnStore} from '../store/vpnStore';
 import type {VpnProfile} from '../types/vpn';
+import {useResolvedTheme, type AppTheme} from '../theme/theme';
 
 interface Props {
   onBack: () => void;
 }
 
 export function ImportProfileScreen({onBack}: Props): React.JSX.Element {
+  const {themeMode} = useVpnStore();
+  const theme = useResolvedTheme(themeMode);
   const [linkText, setLinkText] = useState('');
   const [parsedProfile, setParsedProfile] = useState<VpnProfile | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
@@ -40,7 +43,7 @@ export function ImportProfileScreen({onBack}: Props): React.JSX.Element {
   }, [linkText]);
 
   const handleSave = useCallback(() => {
-    if (!parsedProfile) return;
+    if (!parsedProfile) {return;}
 
     if (!isProfileValid(parsedProfile)) {
       Alert.alert('Invalid Profile', 'Profile is missing required fields.');
@@ -50,110 +53,199 @@ export function ImportProfileScreen({onBack}: Props): React.JSX.Element {
     vpnStore.addProfile(parsedProfile);
     vpnStore.setActiveProfile(parsedProfile);
 
-    Alert.alert('Profile Saved', `"${parsedProfile.name}" has been saved and set as active.`, [
-      {text: 'OK', onPress: onBack},
-    ]);
+    Alert.alert(
+      'Profile Saved',
+      `"${parsedProfile.name}" is now the active KernelVPN profile.`,
+      [{text: 'OK', onPress: onBack}],
+    );
   }, [parsedProfile, onBack]);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView
+      style={[styles.container, {backgroundColor: theme.colors.background}]}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'android' ? 'height' : 'padding'}
         style={styles.flex}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled">
-          {/* Header */}
           <View style={styles.headerRow}>
             <TouchableOpacity onPress={onBack} style={styles.backButton}>
-              <Text style={styles.backText}>← Back</Text>
+              <Text style={[styles.backText, {color: theme.colors.primary}]}>
+                Back
+              </Text>
             </TouchableOpacity>
-            <Text style={styles.title}>Import Profile</Text>
+            <Text style={[styles.title, {color: theme.colors.text}]}>
+              Import Profile
+            </Text>
             <View style={styles.backButton} />
           </View>
 
-          {/* Input */}
-          <Text style={styles.label}>Paste VPN link</Text>
-          <TextInput
-            style={styles.textInput}
-            placeholder="vless://uuid@host:port?..."
-            placeholderTextColor="#475569"
-            value={linkText}
-            onChangeText={setLinkText}
-            multiline
-            numberOfLines={4}
-            autoCapitalize="none"
-            autoCorrect={false}
-            textAlignVertical="top"
-          />
+          <View style={styles.section}>
+            <Text style={[styles.label, {color: theme.colors.secondaryText}]}>
+              VPN link
+            </Text>
+            <TextInput
+              style={[
+                styles.textInput,
+                {
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.separator,
+                  color: theme.colors.text,
+                },
+              ]}
+              placeholder="vless://uuid@host:443?..."
+              placeholderTextColor={theme.colors.tertiaryText}
+              value={linkText}
+              onChangeText={setLinkText}
+              multiline
+              numberOfLines={5}
+              autoCapitalize="none"
+              autoCorrect={false}
+              textAlignVertical="top"
+            />
 
-          <TouchableOpacity
-            style={[styles.parseButton, !linkText.trim() && styles.disabledButton]}
-            onPress={handleParse}
-            disabled={!linkText.trim()}>
-            <Text style={styles.parseButtonText}>Parse Link</Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.parseButton,
+                {backgroundColor: theme.colors.primary},
+                !linkText.trim() && styles.disabledButton,
+              ]}
+              onPress={handleParse}
+              disabled={!linkText.trim()}>
+              <Text style={styles.primaryButtonText}>Parse Link</Text>
+            </TouchableOpacity>
+          </View>
 
-          {/* Parse Error */}
           {parseError && (
-            <View style={styles.errorCard}>
-              <Text style={styles.errorTitle}>Parse Error</Text>
-              <Text style={styles.errorText}>{parseError}</Text>
+            <View
+              style={[
+                styles.messageCard,
+                {
+                  backgroundColor: theme.colors.dangerSoft,
+                  borderColor: theme.colors.danger,
+                },
+              ]}>
+              <Text style={[styles.messageTitle, {color: theme.colors.danger}]}>
+                Parse Error
+              </Text>
+              <Text
+                style={[
+                  styles.messageText,
+                  {color: theme.colors.secondaryText},
+                ]}>
+                {parseError}
+              </Text>
             </View>
           )}
 
-          {/* Parsed Profile */}
           {parsedProfile && (
-            <View style={styles.profileCard}>
-              <Text style={styles.profileTitle}>Parsed Profile</Text>
-              <ProfileField label="Name" value={parsedProfile.name} />
+            <View
+              style={[
+                styles.card,
+                {
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.separator,
+                },
+              ]}>
+              <Text style={[styles.cardTitle, {color: theme.colors.text}]}>
+                Parsed Profile
+              </Text>
+              <ProfileField theme={theme} label="Name" value={parsedProfile.name} />
               <ProfileField
+                theme={theme}
                 label="Protocol"
                 value={parsedProfile.protocol.toUpperCase()}
               />
               <ProfileField
+                theme={theme}
                 label="Host"
                 value={`${parsedProfile.host}:${parsedProfile.port}`}
               />
               {parsedProfile.uuid && (
-                <ProfileField label="UUID" value={parsedProfile.uuid} />
+                <ProfileField theme={theme} label="UUID" value={parsedProfile.uuid} />
+              )}
+              {parsedProfile.method && (
+                <ProfileField
+                  theme={theme}
+                  label="Method"
+                  value={parsedProfile.method}
+                />
               )}
               {parsedProfile.security && (
-                <ProfileField label="Security" value={parsedProfile.security} />
+                <ProfileField
+                  theme={theme}
+                  label="Security"
+                  value={parsedProfile.security}
+                />
               )}
               {parsedProfile.sni && (
-                <ProfileField label="SNI" value={parsedProfile.sni} />
+                <ProfileField theme={theme} label="SNI" value={parsedProfile.sni} />
               )}
               {parsedProfile.publicKey && (
-                <ProfileField label="Public Key" value={parsedProfile.publicKey} />
+                <ProfileField
+                  theme={theme}
+                  label="Public Key"
+                  value={parsedProfile.publicKey}
+                />
               )}
               {parsedProfile.shortId && (
-                <ProfileField label="Short ID" value={parsedProfile.shortId} />
+                <ProfileField
+                  theme={theme}
+                  label="Short ID"
+                  value={parsedProfile.shortId}
+                />
               )}
               {parsedProfile.flow && (
-                <ProfileField label="Flow" value={parsedProfile.flow} />
+                <ProfileField theme={theme} label="Flow" value={parsedProfile.flow} />
               )}
               {parsedProfile.transport && (
-                <ProfileField label="Transport" value={parsedProfile.transport} />
+                <ProfileField
+                  theme={theme}
+                  label="Transport"
+                  value={parsedProfile.transport}
+                />
               )}
 
               <TouchableOpacity
-                style={styles.saveButton}
+                style={[
+                  styles.saveButton,
+                  {backgroundColor: theme.colors.success},
+                ]}
                 onPress={handleSave}>
-                <Text style={styles.saveButtonText}>Save & Set Active</Text>
+                <Text style={styles.primaryButtonText}>Save and Activate</Text>
               </TouchableOpacity>
             </View>
           )}
 
-          {/* Supported formats info */}
-          <View style={styles.infoCard}>
-            <Text style={styles.infoTitle}>Supported formats</Text>
-            <Text style={styles.infoText}>
-              ✅ VLESS (vless://...){'\n'}
-              🔜 VMess (vmess://...){'\n'}
-              🔜 Trojan (trojan://...){'\n'}
-              🔜 Shadowsocks (ss://...)
+          <View
+            style={[
+              styles.card,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.separator,
+              },
+            ]}>
+            <Text style={[styles.cardTitle, {color: theme.colors.text}]}>
+              Supported formats
             </Text>
+            {['VLESS', 'VMess', 'Trojan', 'Shadowsocks'].map(item => (
+              <View key={item} style={styles.formatRow}>
+                <View
+                  style={[
+                    styles.formatDot,
+                    {backgroundColor: theme.colors.primary},
+                  ]}
+                />
+                <Text
+                  style={[
+                    styles.formatText,
+                    {color: theme.colors.secondaryText},
+                  ]}>
+                  {item}
+                </Text>
+              </View>
+            ))}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -164,14 +256,21 @@ export function ImportProfileScreen({onBack}: Props): React.JSX.Element {
 function ProfileField({
   label,
   value,
+  theme,
 }: {
   label: string;
   value: string;
+  theme: AppTheme;
 }): React.JSX.Element {
   return (
-    <View style={fieldStyles.row}>
-      <Text style={fieldStyles.label}>{label}</Text>
-      <Text style={fieldStyles.value} numberOfLines={1} ellipsizeMode="middle">
+    <View style={[fieldStyles.row, {borderBottomColor: theme.colors.separator}]}>
+      <Text style={[fieldStyles.label, {color: theme.colors.secondaryText}]}>
+        {label}
+      </Text>
+      <Text
+        style={[fieldStyles.value, {color: theme.colors.text}]}
+        numberOfLines={1}
+        ellipsizeMode="middle">
         {value}
       </Text>
     </View>
@@ -182,18 +281,15 @@ const fieldStyles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#2D2D3F',
   },
   label: {
     fontSize: 13,
-    color: '#94A3B8',
-    fontWeight: '500',
+    fontWeight: '600',
   },
   value: {
     fontSize: 13,
-    color: '#F1F5F9',
     fontFamily: 'monospace',
     maxWidth: '60%',
     textAlign: 'right',
@@ -203,7 +299,6 @@ const fieldStyles = StyleSheet.create({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F0F1A',
   },
   flex: {
     flex: 1,
@@ -223,38 +318,33 @@ const styles = StyleSheet.create({
   },
   backText: {
     fontSize: 16,
-    color: '#3B82F6',
-    fontWeight: '600',
+    fontWeight: '700',
   },
   title: {
     fontSize: 20,
-    fontWeight: '700',
-    color: '#F1F5F9',
+    fontWeight: '800',
     textAlign: 'center',
   },
+  section: {
+    marginTop: 10,
+  },
   label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#94A3B8',
-    marginHorizontal: 16,
-    marginTop: 16,
+    fontSize: 13,
+    fontWeight: '700',
+    marginHorizontal: 18,
     marginBottom: 8,
   },
   textInput: {
-    backgroundColor: '#1E1E2E',
-    borderRadius: 12,
+    borderRadius: 16,
     marginHorizontal: 16,
     padding: 14,
-    color: '#F1F5F9',
     fontSize: 14,
     fontFamily: 'monospace',
-    minHeight: 100,
-    borderWidth: 1,
-    borderColor: '#2D2D3F',
+    minHeight: 120,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   parseButton: {
-    backgroundColor: '#3B82F6',
-    borderRadius: 12,
+    borderRadius: 14,
     marginHorizontal: 16,
     marginTop: 12,
     paddingVertical: 14,
@@ -263,71 +353,58 @@ const styles = StyleSheet.create({
   disabledButton: {
     opacity: 0.5,
   },
-  parseButtonText: {
+  primaryButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '800',
   },
-  errorCard: {
-    backgroundColor: '#2D1B1B',
-    borderRadius: 12,
+  messageCard: {
+    borderRadius: 14,
     marginHorizontal: 16,
     marginTop: 16,
     padding: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#EF4444',
+    borderWidth: StyleSheet.hairlineWidth,
   },
-  errorTitle: {
+  messageTitle: {
     fontSize: 15,
-    fontWeight: '700',
-    color: '#FCA5A5',
+    fontWeight: '800',
     marginBottom: 4,
   },
-  errorText: {
+  messageText: {
     fontSize: 13,
-    color: '#FDA4AF',
+    lineHeight: 18,
   },
-  profileCard: {
-    backgroundColor: '#1E1E2E',
-    borderRadius: 12,
+  card: {
+    borderRadius: 16,
     marginHorizontal: 16,
     marginTop: 16,
     padding: 16,
+    borderWidth: StyleSheet.hairlineWidth,
   },
-  profileTitle: {
+  cardTitle: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#F1F5F9',
+    fontWeight: '800',
     marginBottom: 12,
   },
   saveButton: {
-    backgroundColor: '#10B981',
-    borderRadius: 10,
+    borderRadius: 14,
     marginTop: 16,
-    paddingVertical: 12,
+    paddingVertical: 13,
     alignItems: 'center',
   },
-  saveButtonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700',
+  formatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 5,
   },
-  infoCard: {
-    backgroundColor: '#1E1E2E',
-    borderRadius: 12,
-    marginHorizontal: 16,
-    marginTop: 20,
-    padding: 16,
+  formatDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    marginRight: 10,
   },
-  infoTitle: {
+  formatText: {
     fontSize: 14,
-    fontWeight: '700',
-    color: '#94A3B8',
-    marginBottom: 8,
-  },
-  infoText: {
-    fontSize: 13,
-    color: '#64748B',
-    lineHeight: 22,
+    fontWeight: '600',
   },
 });

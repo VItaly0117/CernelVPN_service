@@ -59,6 +59,27 @@ export async function startVpn(profileJson: string): Promise<void> {
   return VpnBridgeModule.startVpn(profileJson);
 }
 
+export async function savePersistedState(stateJson: string): Promise<void> {
+  if (!VpnBridgeModule) {
+    throw new Error('VpnBridgeModule is not available');
+  }
+  return VpnBridgeModule.savePersistedState(stateJson);
+}
+
+export async function loadPersistedState(): Promise<string | null> {
+  if (!VpnBridgeModule) {
+    return null;
+  }
+  return VpnBridgeModule.loadPersistedState();
+}
+
+export async function openBatteryOptimizationSettings(): Promise<void> {
+  if (!VpnBridgeModule) {
+    throw new Error('VpnBridgeModule is not available');
+  }
+  return VpnBridgeModule.openBatteryOptimizationSettings();
+}
+
 /**
  * Stop the running VPN service.
  */

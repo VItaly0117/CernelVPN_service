@@ -2,19 +2,53 @@
  * App.tsx — Root component with simple screen navigation.
  *
  * Uses a minimal stack-based navigation without react-navigation dependency.
- * Screens: Home, ImportProfile, SplitTunneling, Diagnostics.
+ * Screens: Home, ImportProfile, SplitTunneling, Diagnostics, Panel.
  */
-import React, {useState, useCallback} from 'react';
+import React, {useState, useCallback, useEffect} from 'react';
 import {StatusBar} from 'react-native';
 import {HomeScreen} from './src/screens/HomeScreen';
 import {ImportProfileScreen} from './src/screens/ImportProfileScreen';
 import {SplitTunnelingScreen} from './src/screens/SplitTunnelingScreen';
 import {DiagnosticsScreen} from './src/screens/DiagnosticsScreen';
+import {PanelScreen} from './src/screens/PanelScreen';
+import {useVpnStore} from './src/store/vpnStore';
+import {useResolvedTheme} from './src/theme/theme';
+import {
+  hydrateVpnStore,
+  startPersistingVpnStore,
+} from './src/services/persistenceService';
 
-type ScreenName = 'Home' | 'ImportProfile' | 'SplitTunneling' | 'Diagnostics';
+type ScreenName =
+  | 'Home'
+  | 'ImportProfile'
+  | 'SplitTunneling'
+  | 'Diagnostics'
+  | 'Panel';
 
 export default function App(): React.JSX.Element {
   const [currentScreen, setCurrentScreen] = useState<ScreenName>('Home');
+  const {themeMode} = useVpnStore();
+  const theme = useResolvedTheme(themeMode);
+
+  useEffect(() => {
+    let cancelled = false;
+    let stopPersisting: (() => void) | null = null;
+
+    hydrateVpnStore()
+      .catch(error => {
+        console.warn('[App] Failed to hydrate persisted state', error);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          stopPersisting = startPersistingVpnStore();
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      stopPersisting?.();
+    };
+  }, []);
 
   const navigate = useCallback((screen: string) => {
     setCurrentScreen(screen as ScreenName);
@@ -27,8 +61,8 @@ export default function App(): React.JSX.Element {
   return (
     <>
       <StatusBar
-        barStyle="light-content"
-        backgroundColor="#0F0F1A"
+        barStyle={theme.isDark ? 'light-content' : 'dark-content'}
+        backgroundColor={theme.colors.background}
         translucent={false}
       />
       {currentScreen === 'Home' && <HomeScreen onNavigate={navigate} />}
@@ -41,6 +75,7 @@ export default function App(): React.JSX.Element {
       {currentScreen === 'Diagnostics' && (
         <DiagnosticsScreen onBack={goHome} />
       )}
+      {currentScreen === 'Panel' && <PanelScreen onBack={goHome} />}
     </>
   );
 }

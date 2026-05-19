@@ -38,7 +38,7 @@ class InstalledAppsProvider(private val context: Context) {
             activities
                 .mapNotNull { resolveInfo ->
                     val pkgName = resolveInfo.activityInfo.packageName
-                    if (pkgName != null && seen.add(pkgName)) {
+                    if (pkgName != null && pkgName != context.packageName && seen.add(pkgName)) {
                         val appName = try {
                             resolveInfo.loadLabel(pm).toString()
                         } catch (e: Exception) {

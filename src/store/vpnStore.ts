@@ -16,7 +16,10 @@ import type {
   VpnProfile,
   SplitTunnelMode,
   SplitTunnelRule,
+  PersistedVpnState,
+  PanelSettings,
 } from '../types/vpn';
+import type {ThemeMode} from '../theme/theme';
 
 // ---------------------------------------------------------------------------
 // Listener type
@@ -28,7 +31,7 @@ type Listener = () => void;
 // State shape
 // ---------------------------------------------------------------------------
 
-interface VpnStoreState {
+export interface VpnStoreState {
   status: VpnStatus;
   activeProfile: VpnProfile | null;
   savedProfiles: VpnProfile[];
@@ -36,6 +39,8 @@ interface VpnStoreState {
   splitTunnelRules: SplitTunnelRule[];
   lastError: string | null;
   lastRulesUpdate: number | null; // epoch ms
+  themeMode: ThemeMode;
+  panelSettings: PanelSettings | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -51,6 +56,8 @@ class VpnStore {
     splitTunnelRules: [],
     lastError: null,
     lastRulesUpdate: null,
+    themeMode: 'system',
+    panelSettings: null,
   };
 
   private _listeners: Set<Listener> = new Set();
@@ -99,6 +106,14 @@ class VpnStore {
 
   get lastError(): string | null {
     return this._state.lastError;
+  }
+
+  get themeMode(): ThemeMode {
+    return this._state.themeMode;
+  }
+
+  get panelSettings(): PanelSettings | null {
+    return this._state.panelSettings;
   }
 
   // ---- Setters ----
@@ -169,6 +184,45 @@ class VpnStore {
   setLastRulesUpdate(timestamp: number): void {
     this._state = {...this._state, lastRulesUpdate: timestamp};
     this._notify();
+  }
+
+  setThemeMode(themeMode: ThemeMode): void {
+    this._state = {...this._state, themeMode};
+    this._notify();
+  }
+
+  setPanelSettings(panelSettings: PanelSettings | null): void {
+    this._state = {...this._state, panelSettings};
+    this._notify();
+  }
+
+  hydrateFromPersistedState(state: PersistedVpnState): void {
+    const activeProfile =
+      state.savedProfiles.find(profile => profile.id === state.activeProfileId) ??
+      null;
+    this._state = {
+      ...this._state,
+      activeProfile,
+      savedProfiles: state.savedProfiles,
+      splitTunnelMode: state.splitTunnelMode,
+      splitTunnelRules: state.splitTunnelRules,
+      lastRulesUpdate: state.lastRulesUpdate,
+      themeMode: state.themeMode,
+      panelSettings: state.panelSettings,
+    };
+    this._notify();
+  }
+
+  toPersistedState(): PersistedVpnState {
+    return {
+      savedProfiles: this._state.savedProfiles,
+      activeProfileId: this._state.activeProfile?.id ?? null,
+      splitTunnelMode: this._state.splitTunnelMode,
+      splitTunnelRules: this._state.splitTunnelRules,
+      lastRulesUpdate: this._state.lastRulesUpdate,
+      themeMode: this._state.themeMode,
+      panelSettings: this._state.panelSettings,
+    };
   }
 }
 

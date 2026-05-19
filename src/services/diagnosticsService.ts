@@ -18,7 +18,10 @@ export async function fetchDiagnostics(): Promise<VpnDiagnosticResult> {
     return {
       vpnPermissionGranted: false,
       serviceRunning: false,
+      coreIntegrated: false,
       coreRunning: false,
+      splitTunnelMode: 'vpn_all_except_selected',
+      splitTunnelRuleCount: 0,
       lastError:
         error instanceof Error
           ? error.message
@@ -47,8 +50,20 @@ export function formatDiagnostics(
       isWarning: false,
     },
     {
+      label: 'Core Integrated',
+      value: diag.coreIntegrated ? 'Yes' : 'No (Skeleton Mode)',
+      isWarning: !diag.coreIntegrated,
+    },
+    {
       label: 'VPN Core',
       value: diag.coreRunning ? 'Running' : 'Not started',
+      isWarning: false,
+    },
+    {
+      label: 'Split Tunnel',
+      value: `${diag.splitTunnelMode ?? 'vpn_all_except_selected'} · ${
+        diag.splitTunnelRuleCount ?? 0
+      } app rule(s)`,
       isWarning: false,
     },
   ];

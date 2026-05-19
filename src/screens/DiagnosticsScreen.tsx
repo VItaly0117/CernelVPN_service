@@ -1,7 +1,7 @@
 /**
- * DiagnosticsScreen — VPN service health check.
+ * DiagnosticsScreen — KernelVPN service health check.
  */
-import React, {useState, useCallback} from 'react';
+import React, {useState, useCallback, useEffect} from 'react';
 import {
   View,
   Text,
@@ -15,13 +15,18 @@ import {
   fetchDiagnostics,
   formatDiagnostics,
 } from '../services/diagnosticsService';
+import * as NativeVpn from '../native/NativeVpn';
 import type {VpnDiagnosticResult} from '../types/vpn';
+import {useVpnStore} from '../store/vpnStore';
+import {useResolvedTheme, type AppTheme} from '../theme/theme';
 
 interface Props {
   onBack: () => void;
 }
 
 export function DiagnosticsScreen({onBack}: Props): React.JSX.Element {
+  const {themeMode} = useVpnStore();
+  const theme = useResolvedTheme(themeMode);
   const [diagnostics, setDiagnostics] = useState<VpnDiagnosticResult | null>(
     null,
   );
@@ -37,25 +42,41 @@ export function DiagnosticsScreen({onBack}: Props): React.JSX.Element {
     }
   }, []);
 
+  const handleBatterySettings = useCallback(async () => {
+    try {
+      await NativeVpn.openBatteryOptimizationSettings();
+    } catch (error: unknown) {
+      console.warn('[Diagnostics] Failed to open battery settings', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    handleRefresh();
+  }, [handleRefresh]);
+
   const formatted = diagnostics ? formatDiagnostics(diagnostics) : [];
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView
+      style={[styles.container, {backgroundColor: theme.colors.background}]}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Header */}
         <View style={styles.headerRow}>
           <TouchableOpacity onPress={onBack} style={styles.backButton}>
-            <Text style={styles.backText}>← Back</Text>
+            <Text style={[styles.backText, {color: theme.colors.primary}]}>
+              Back
+            </Text>
           </TouchableOpacity>
-          <Text style={styles.title}>Diagnostics</Text>
+          <Text style={[styles.title, {color: theme.colors.text}]}>
+            Diagnostics
+          </Text>
           <View style={styles.backButton} />
         </View>
 
-        {/* Refresh button */}
         <TouchableOpacity
-          style={styles.refreshButton}
+          style={[styles.refreshButton, {backgroundColor: theme.colors.primary}]}
           onPress={handleRefresh}
-          disabled={loading}>
+          disabled={loading}
+          activeOpacity={0.82}>
           {loading ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
@@ -63,54 +84,128 @@ export function DiagnosticsScreen({onBack}: Props): React.JSX.Element {
           )}
         </TouchableOpacity>
 
-        {/* Results */}
         {diagnostics ? (
-          <View style={styles.resultsCard}>
+          <View
+            style={[
+              styles.resultsCard,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.separator,
+              },
+            ]}>
             {formatted.map((item, index) => (
-              <View
-                key={index}
-                style={[
-                  styles.resultRow,
-                  index < formatted.length - 1 && styles.resultRowBorder,
-                ]}>
-                <Text style={styles.resultLabel}>{item.label}</Text>
-                <Text
-                  style={[
-                    styles.resultValue,
-                    item.isWarning && styles.warningValue,
-                  ]}
-                  numberOfLines={2}>
-                  {item.value}
-                </Text>
-              </View>
+              <DiagnosticRow
+                key={item.label}
+                theme={theme}
+                label={item.label}
+                value={item.value}
+                isWarning={item.isWarning}
+                withBorder={index < formatted.length - 1}
+              />
             ))}
           </View>
         ) : (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>
-              Tap "Refresh Diagnostics" to check VPN service health.
+          <View
+            style={[
+              styles.emptyCard,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.separator,
+              },
+            ]}>
+            <Text style={[styles.emptyText, {color: theme.colors.tertiaryText}]}>
+              Diagnostics will appear after the first refresh.
             </Text>
           </View>
         )}
 
-        {/* Info */}
-        <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>About Diagnostics</Text>
-          <Text style={styles.infoText}>
-            This screen checks the current state of the VPN service,
-            permissions, and the proxy core. Use it to troubleshoot
-            connection issues.
+        <View
+          style={[
+            styles.infoCard,
+            {
+              backgroundColor: theme.colors.primarySoft,
+              borderColor: theme.colors.separator,
+            },
+          ]}>
+          <Text style={[styles.infoTitle, {color: theme.colors.primary}]}>
+            Device notes
           </Text>
+          <Text style={[styles.infoText, {color: theme.colors.secondaryText}]}>
+            Samsung and OnePlus may restrict foreground VPN services when battery
+            optimization is enabled. Keep KernelVPN unrestricted during device
+            testing.
+          </Text>
+          <TouchableOpacity
+            style={[
+              styles.secondaryButton,
+              {borderColor: theme.colors.primary},
+            ]}
+            onPress={handleBatterySettings}
+            activeOpacity={0.82}>
+            <Text
+              style={[
+                styles.secondaryButtonText,
+                {color: theme.colors.primary},
+              ]}>
+              Open Battery Settings
+            </Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
+function DiagnosticRow({
+  label,
+  value,
+  isWarning,
+  withBorder,
+  theme,
+}: {
+  label: string;
+  value: string;
+  isWarning?: boolean;
+  withBorder: boolean;
+  theme: AppTheme;
+}): React.JSX.Element {
+  return (
+    <View
+      style={[
+        styles.resultRow,
+        withBorder && {borderBottomColor: theme.colors.separator},
+        withBorder && styles.resultRowBorder,
+      ]}>
+      <View
+        style={[
+          styles.checkDot,
+          {
+            backgroundColor: isWarning
+              ? theme.colors.warning
+              : theme.colors.success,
+          },
+        ]}
+      />
+      <View style={styles.resultTextWrap}>
+        <Text style={[styles.resultLabel, {color: theme.colors.secondaryText}]}>
+          {label}
+        </Text>
+        <Text
+          style={[
+            styles.resultValue,
+            {color: isWarning ? theme.colors.warning : theme.colors.text},
+          ]}
+          numberOfLines={3}>
+          {value}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F0F1A',
   },
   scrollContent: {
     paddingBottom: 40,
@@ -127,18 +222,15 @@ const styles = StyleSheet.create({
   },
   backText: {
     fontSize: 16,
-    color: '#3B82F6',
-    fontWeight: '600',
+    fontWeight: '700',
   },
   title: {
     fontSize: 20,
-    fontWeight: '700',
-    color: '#F1F5F9',
+    fontWeight: '800',
     textAlign: 'center',
   },
   refreshButton: {
-    backgroundColor: '#3B82F6',
-    borderRadius: 12,
+    borderRadius: 14,
     marginHorizontal: 16,
     marginVertical: 16,
     paddingVertical: 14,
@@ -146,69 +238,79 @@ const styles = StyleSheet.create({
   },
   refreshText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '800',
   },
   resultsCard: {
-    backgroundColor: '#1E1E2E',
-    borderRadius: 12,
+    borderRadius: 16,
     marginHorizontal: 16,
-    padding: 16,
+    paddingHorizontal: 16,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   resultRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
+    alignItems: 'flex-start',
+    paddingVertical: 13,
   },
   resultRowBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#2D2D3F',
+  },
+  checkDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    marginTop: 5,
+    marginRight: 12,
+  },
+  resultTextWrap: {
+    flex: 1,
   },
   resultLabel: {
-    fontSize: 14,
-    color: '#94A3B8',
-    fontWeight: '500',
-    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
   },
   resultValue: {
     fontSize: 14,
-    color: '#F1F5F9',
-    fontWeight: '600',
-    textAlign: 'right',
-    flex: 1,
-  },
-  warningValue: {
-    color: '#FCA5A5',
+    fontWeight: '700',
+    marginTop: 2,
   },
   emptyCard: {
-    backgroundColor: '#1E1E2E',
-    borderRadius: 12,
+    borderRadius: 16,
     marginHorizontal: 16,
     padding: 24,
     alignItems: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
   },
   emptyText: {
-    color: '#64748B',
     fontSize: 14,
     textAlign: 'center',
   },
   infoCard: {
-    backgroundColor: '#1E1E2E',
-    borderRadius: 12,
+    borderRadius: 16,
     marginHorizontal: 16,
     marginTop: 20,
     padding: 16,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   infoTitle: {
     fontSize: 14,
-    fontWeight: '700',
-    color: '#94A3B8',
+    fontWeight: '800',
     marginBottom: 8,
   },
   infoText: {
     fontSize: 13,
-    color: '#64748B',
     lineHeight: 20,
+  },
+  secondaryButton: {
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    minHeight: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 14,
+  },
+  secondaryButtonText: {
+    fontSize: 14,
+    fontWeight: '800',
   },
 });

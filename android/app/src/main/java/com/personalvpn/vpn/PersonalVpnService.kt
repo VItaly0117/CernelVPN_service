@@ -11,6 +11,8 @@ import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.personalvpn.MainActivity
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * PersonalVpnService — Android VpnService skeleton.
@@ -30,11 +32,14 @@ class PersonalVpnService : VpnService() {
 
     companion object {
         private const val TAG = "PersonalVpnService"
-        private const val CHANNEL_ID = "personal_vpn_channel"
+        private const val CHANNEL_ID = "kernelvpn_channel"
         private const val NOTIFICATION_ID = 1
-        const val ACTION_START = "com.personalvpn.vpn.START"
-        const val ACTION_STOP = "com.personalvpn.vpn.STOP"
-        const val EXTRA_PROFILE_JSON = "profile_json"
+        const val ACTION_START = "com.kernelvpn.vpn.START"
+        const val ACTION_STOP = "com.kernelvpn.vpn.STOP"
+        const val EXTRA_START_PAYLOAD_JSON = "start_payload_json"
+
+        /** Set to true ONLY when the real core is integrated. */
+        const val DEMO_FULL_TUNNEL = false
 
         /** Whether the service is currently running. Checked by DiagnosticsManager. */
         @Volatile
@@ -48,6 +53,14 @@ class PersonalVpnService : VpnService() {
         /** Current VPN status — used by VpnBridgeModule to report back to JS. */
         @Volatile
         var currentStatus: VpnStatus = VpnStatus.DISCONNECTED
+            private set
+
+        @Volatile
+        var currentSplitTunnelMode: String = "vpn_all_except_selected"
+            private set
+
+        @Volatile
+        var currentSplitTunnelRuleCount: Int = 0
             private set
 
         /** Callback for status changes — set by VpnBridgeModule. */
@@ -79,7 +92,11 @@ class PersonalVpnService : VpnService() {
             }
             else -> {
                 // Start or restart VPN
-                val profileJson = intent?.getStringExtra(EXTRA_PROFILE_JSON) ?: "{}"
+                val startConfig = parseStartConfig(
+                    intent?.getStringExtra(EXTRA_START_PAYLOAD_JSON)
+                )
+                currentSplitTunnelMode = startConfig.splitTunnelMode
+                currentSplitTunnelRuleCount = startConfig.splitTunnelRules.count { it.enabled }
 
                 // Start foreground immediately (Android 8+ requirement)
                 startForeground(NOTIFICATION_ID, buildNotification("Connecting…"))
@@ -87,11 +104,14 @@ class PersonalVpnService : VpnService() {
                 updateStatus(VpnStatus.CONNECTING)
                 isServiceRunning = true
 
-                val success = establishVpnInterface()
+                val success = establishVpnInterface(
+                    startConfig.splitTunnelMode,
+                    startConfig.splitTunnelRules
+                )
                 if (success) {
                     // Start core (stub)
                     val fd = vpnInterface?.fd
-                    val coreResult = core?.start(profileJson, fd)
+                    val coreResult = core?.start(startConfig.profileJson, fd)
                     if (coreResult?.isSuccess == true) {
                         updateStatus(VpnStatus.CONNECTED)
                         updateNotification("Connected")
@@ -133,26 +153,37 @@ class PersonalVpnService : VpnService() {
      *
      * Returns true if the interface was established successfully.
      */
-    private fun establishVpnInterface(): Boolean {
+    private fun establishVpnInterface(
+        splitTunnelMode: String,
+        splitTunnelRules: List<SplitTunnelRuleData>
+    ): Boolean {
         return try {
             // Close existing interface if any
             closeVpnInterface()
 
             val builder = Builder()
-            builder.setSession("Personal VPN")
+            builder.setSession("KernelVPN")
             builder.addAddress("10.0.0.2", 32)
             builder.addDnsServer("1.1.1.1")
             builder.addDnsServer("8.8.8.8")
-            builder.addRoute("0.0.0.0", 0) // Route all IPv4 traffic
 
-            // TODO: Apply split tunneling rules
-            // applySplitTunneling(builder, rules, mode)
+            if (DEMO_FULL_TUNNEL) {
+                // Full tunnel route must be enabled only after real core integration, otherwise traffic will be blackholed.
+                builder.addRoute("0.0.0.0", 0) // Route all IPv4 traffic
+            } else {
+                // Safe route for testing VPN lifecycle without breaking internet
+                builder.addRoute("203.0.113.0", 24)
+            }
+
+            applySplitTunneling(builder, splitTunnelRules, splitTunnelMode)
 
             // Allow the app itself to bypass VPN to prevent loops
-            try {
-                builder.addDisallowedApplication(packageName)
-            } catch (e: Exception) {
-                Log.w(TAG, "Could not disallow own package", e)
+            if (splitTunnelMode != "vpn_selected_only") {
+                try {
+                    builder.addDisallowedApplication(packageName)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not disallow own package", e)
+                }
             }
 
             // Set MTU
@@ -177,42 +208,77 @@ class PersonalVpnService : VpnService() {
     /**
      * Apply split tunneling rules to the VPN builder.
      *
-     * TODO: Read rules from Intent extras or a shared preferences store.
      */
-    @Suppress("unused")
     private fun applySplitTunneling(
         builder: Builder,
         rules: List<SplitTunnelRuleData>,
         mode: String
     ) {
+        val enabledRules = rules.filter { it.enabled }
         when (mode) {
             "vpn_all_except_selected" -> {
                 // VPN everything, except selected apps go direct
-                for (rule in rules) {
-                    if (rule.enabled) {
-                        try {
-                            builder.addDisallowedApplication(rule.packageName)
-                            Log.d(TAG, "Disallowed: ${rule.packageName}")
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Failed to disallow ${rule.packageName}", e)
-                        }
+                for (rule in enabledRules) {
+                    try {
+                        builder.addDisallowedApplication(rule.packageName)
+                        Log.d(TAG, "Disallowed: ${rule.packageName}")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to disallow ${rule.packageName}", e)
                     }
                 }
             }
             "vpn_selected_only" -> {
+                require(enabledRules.isNotEmpty()) {
+                    "At least one app must be selected for vpn_selected_only mode"
+                }
                 // Only selected apps go through VPN
-                for (rule in rules) {
-                    if (rule.enabled) {
-                        try {
-                            builder.addAllowedApplication(rule.packageName)
-                            Log.d(TAG, "Allowed: ${rule.packageName}")
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Failed to allow ${rule.packageName}", e)
-                        }
+                for (rule in enabledRules) {
+                    try {
+                        builder.addAllowedApplication(rule.packageName)
+                        Log.d(TAG, "Allowed: ${rule.packageName}")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to allow ${rule.packageName}", e)
                     }
                 }
             }
         }
+    }
+
+    private fun parseStartConfig(rawJson: String?): StartConfig {
+        return try {
+            if (rawJson.isNullOrBlank()) {
+                return StartConfig("{}", "vpn_all_except_selected", emptyList())
+            }
+
+            val payload = JSONObject(rawJson)
+            val profileJson = payload.optJSONObject("profile")?.toString() ?: rawJson
+            val mode = payload.optString("splitTunnelMode", "vpn_all_except_selected")
+            val rules = parseSplitTunnelRules(payload.optJSONArray("splitTunnelRules"))
+            StartConfig(profileJson, mode, rules)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse start payload; falling back to profile JSON", e)
+            StartConfig(rawJson ?: "{}", "vpn_all_except_selected", emptyList())
+        }
+    }
+
+    private fun parseSplitTunnelRules(array: JSONArray?): List<SplitTunnelRuleData> {
+        if (array == null) return emptyList()
+
+        val result = mutableListOf<SplitTunnelRuleData>()
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index) ?: continue
+            val packageName = item.optString("packageName", "")
+            if (packageName.isBlank() || packageName == this.packageName) {
+                continue
+            }
+            result.add(
+                SplitTunnelRuleData(
+                    packageName = packageName,
+                    enabled = item.optBoolean("enabled", false)
+                )
+            )
+        }
+        return result
     }
 
     // -------------------------------------------------------------------------
@@ -231,6 +297,8 @@ class PersonalVpnService : VpnService() {
 
         isServiceRunning = false
         coreManager = null
+        currentSplitTunnelMode = "vpn_all_except_selected"
+        currentSplitTunnelRuleCount = 0
         updateStatus(VpnStatus.DISCONNECTED)
 
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -263,10 +331,10 @@ class PersonalVpnService : VpnService() {
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "VPN Service",
+            "KernelVPN Service",
             NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "Shows when VPN is active"
+            description = "Shows when KernelVPN is active"
             setShowBadge(false)
         }
 
@@ -292,7 +360,7 @@ class PersonalVpnService : VpnService() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Personal VPN")
+            .setContentTitle("KernelVPN")
             .setContentText(contentText)
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setOngoing(true)
@@ -319,5 +387,11 @@ class PersonalVpnService : VpnService() {
     data class SplitTunnelRuleData(
         val packageName: String,
         val enabled: Boolean
+    )
+
+    data class StartConfig(
+        val profileJson: String,
+        val splitTunnelMode: String,
+        val splitTunnelRules: List<SplitTunnelRuleData>
     )
 }

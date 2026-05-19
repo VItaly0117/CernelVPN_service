@@ -20,11 +20,11 @@ android {
     namespace "com.personalvpn"
 
     defaultConfig {
-        applicationId "com.personalvpn"
+        applicationId "com.kernelvpn"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
-        versionName "0.1.0"
+        versionName "0.3.0"
     }
 
     buildTypes {
@@ -64,4 +64,3 @@ dependencies {
     // AndroidX for foreground service / compat
     implementation "androidx.core:core-ktx:1.13.1"
 }
-
