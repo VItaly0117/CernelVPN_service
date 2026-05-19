@@ -9,6 +9,7 @@ import android.net.VpnService
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.personalvpn.MainActivity
@@ -67,6 +68,10 @@ class PersonalVpnService : VpnService() {
         var lastConnectionError: String? = null
             private set
 
+        @Volatile
+        var isWakeLockHeld: Boolean = false
+            private set
+
         /** Callback for status changes — set by VpnBridgeModule. */
         var statusListener: ((VpnStatus) -> Unit)? = null
 
@@ -75,6 +80,7 @@ class PersonalVpnService : VpnService() {
     }
 
     private var core: CoreManager? = null
+    private var wakeLock: PowerManager.WakeLock? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
     // -------------------------------------------------------------------------
@@ -110,6 +116,7 @@ class PersonalVpnService : VpnService() {
 
                 // Start foreground immediately (Android 8+ requirement)
                 startForeground(NOTIFICATION_ID, buildNotification("Connecting…"))
+                acquireWakeLock()
 
                 updateStatus(VpnStatus.CONNECTING)
                 isServiceRunning = true
@@ -230,6 +237,7 @@ class PersonalVpnService : VpnService() {
 
         // Stop core
         core?.stop()
+        releaseWakeLock()
 
         isServiceRunning = false
         coreManager = null
@@ -259,11 +267,46 @@ class PersonalVpnService : VpnService() {
         lastConnectionError = message
         isServiceRunning = false
         core?.stop()
+        releaseWakeLock()
         updateStatus(VpnStatus.ERROR)
         updateNotification("Error: core failed")
         errorListener?.invoke(code, message)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+    }
+
+    private fun acquireWakeLock() {
+        if (wakeLock?.isHeld == true) {
+            isWakeLockHeld = true
+            return
+        }
+
+        runCatching {
+            val powerManager = getSystemService(PowerManager::class.java)
+            wakeLock = powerManager
+                ?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "KernelVPN:VpnWakeLock")
+                ?.apply {
+                    setReferenceCounted(false)
+                    acquire()
+                }
+            isWakeLockHeld = wakeLock?.isHeld == true
+            Log.i(TAG, "VPN wake lock held=$isWakeLockHeld")
+        }.onFailure { error ->
+            isWakeLockHeld = false
+            Log.w(TAG, "Failed to acquire VPN wake lock", error)
+        }
+    }
+
+    private fun releaseWakeLock() {
+        runCatching {
+            if (wakeLock?.isHeld == true) {
+                wakeLock?.release()
+            }
+        }.onFailure { error ->
+            Log.w(TAG, "Failed to release VPN wake lock", error)
+        }
+        wakeLock = null
+        isWakeLockHeld = false
     }
 
     // -------------------------------------------------------------------------

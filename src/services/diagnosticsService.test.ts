@@ -14,6 +14,7 @@ const diagnostics: VpnDiagnosticResult = {
   deviceManufacturer: 'OnePlus',
   deviceModel: 'MT2111',
   androidVersion: 'Android 14 (API 34)',
+  wakeLockHeld: true,
   splitTunnelMode: 'vpn_all_except_selected',
   splitTunnelRuleCount: 0,
   panelConnectionStatus: 'Not configured',
@@ -36,6 +37,7 @@ describe('diagnosticsService', () => {
 
     expect(report).toContain('Device: OnePlus MT2111 · Android 14 (API 34)');
     expect(report).toContain('VPN Core: Running');
+    expect(report).toContain('Wake Lock: Held');
     expect(report).toContain('On OnePlus, set Battery -> KernelVPN -> Unrestricted.');
     expect(report).not.toContain('uuid');
     expect(report).not.toContain('password');

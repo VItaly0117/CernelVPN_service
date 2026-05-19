@@ -113,6 +113,11 @@ export function formatDiagnostics(
       isWarning: false,
     },
     {
+      label: 'Wake Lock',
+      value: diag.wakeLockHeld ? 'Held' : 'Not held',
+      isWarning: diag.serviceRunning && diag.coreRunning && !diag.wakeLockHeld,
+    },
+    {
       label: 'Active Profile',
       value: diag.activeProfileName ?? 'None',
       isWarning: !diag.activeProfileName,
@@ -207,6 +212,7 @@ export function buildDiagnosticsReport(diag: VpnDiagnosticResult): string {
     `VPN Service: ${diag.serviceRunning ? 'Running' : 'Stopped'}`,
     `Core Integrated: ${diag.coreIntegrated ? 'Yes' : 'No'}`,
     `VPN Core: ${diag.coreRunning ? 'Running' : 'Not started'}`,
+    `Wake Lock: ${diag.wakeLockHeld ? 'Held' : 'Not held'}`,
     `Active Profile: ${diag.activeProfileName ?? 'None'}`,
     `Protocol: ${diag.selectedProtocol ?? 'Unknown'}`,
     `Split Tunnel: ${diag.splitTunnelMode ?? 'unknown'} · ${
