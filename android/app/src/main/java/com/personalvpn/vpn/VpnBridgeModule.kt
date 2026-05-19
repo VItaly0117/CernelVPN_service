@@ -212,6 +212,7 @@ class VpnBridgeModule(reactContext: ReactApplicationContext) :
                 putString("deviceManufacturer", result.deviceManufacturer)
                 putString("deviceModel", result.deviceModel)
                 putString("androidVersion", result.androidVersion)
+                putBoolean("wakeLockHeld", result.wakeLockHeld)
                 putString("splitTunnelMode", result.splitTunnelMode)
                 putInt("splitTunnelRuleCount", result.splitTunnelRuleCount)
                 putString("lastError", result.lastError)

@@ -59,6 +59,7 @@ export interface VpnDiagnosticResult {
   deviceManufacturer?: string;
   deviceModel?: string;
   androidVersion?: string;
+  wakeLockHeld?: boolean;
   splitTunnelMode?: SplitTunnelMode;
   splitTunnelRuleCount?: number;
   lastError?: string;

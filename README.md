@@ -154,8 +154,8 @@ Reality clients from inbounds, and request Xray stop/restart.
 6. If a remote tester cannot capture `adb logcat`, ask them to open
    Diagnostics -> Share Diagnostics Report and send the generated text. The
    report includes device model, Android version, service/core state, split
-   tunnel state, battery warning, and last native/core error without exposing
-   profile secrets.
+   tunnel state, wake-lock state, battery warning, and last native/core error
+   without exposing profile secrets.
 
 The app should not show `Connected` if libbox rejects the config or fails to
 open TUN. In that case, Diagnostics and logcat should show the core/connection
@@ -250,7 +250,9 @@ show a different proxy/TLS error instead of a local Android routing error.
 
 On OnePlus/OxygenOS, also disable battery optimization if Diagnostics shows the
 Battery Warning row. OxygenOS may keep the status icon visible while throttling
-or killing background VPN work.
+or killing background VPN work. KernelVPN also holds a partial wake lock while
+the VPN session is active; Diagnostics should show `Wake Lock: Held` during an
+active connection.
 
 Do not paste real VLESS links, UUIDs, panel cookies, or passwords into logs you
 share.

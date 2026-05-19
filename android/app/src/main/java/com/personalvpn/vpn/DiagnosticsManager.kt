@@ -24,6 +24,7 @@ class DiagnosticsManager(private val context: Context) {
         val deviceManufacturer: String,
         val deviceModel: String,
         val androidVersion: String,
+        val wakeLockHeld: Boolean,
         val splitTunnelMode: String,
         val splitTunnelRuleCount: Int,
         val lastError: String?,
@@ -46,6 +47,7 @@ class DiagnosticsManager(private val context: Context) {
         val coreRunning = PersonalVpnService.coreManager?.isRunning() ?: false
         val activeProfileName = PersonalVpnService.currentActiveProfileName
         val selectedProtocol = PersonalVpnService.currentSelectedProtocol
+        val wakeLockHeld = PersonalVpnService.isWakeLockHeld
         val splitTunnelMode = PersonalVpnService.currentSplitTunnelMode
         val splitTunnelRuleCount = PersonalVpnService.currentSplitTunnelRuleCount
         val lastConnectionError = PersonalVpnService.lastConnectionError
@@ -62,6 +64,7 @@ class DiagnosticsManager(private val context: Context) {
             deviceManufacturer = Build.MANUFACTURER ?: "unknown",
             deviceModel = Build.MODEL ?: "unknown",
             androidVersion = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})",
+            wakeLockHeld = wakeLockHeld,
             splitTunnelMode = splitTunnelMode,
             splitTunnelRuleCount = splitTunnelRuleCount,
             lastError = lastError,
