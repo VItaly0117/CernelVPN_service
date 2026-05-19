@@ -5,7 +5,7 @@
  * Screens: Home, ImportProfile, SplitTunneling, Diagnostics, Panel.
  */
 import React, {useState, useCallback, useEffect} from 'react';
-import {StatusBar} from 'react-native';
+import {BackHandler, StatusBar} from 'react-native';
 import {HomeScreen} from './src/screens/HomeScreen';
 import {ImportProfileScreen} from './src/screens/ImportProfileScreen';
 import {SplitTunnelingScreen} from './src/screens/SplitTunnelingScreen';
@@ -17,16 +17,13 @@ import {
   hydrateVpnStore,
   startPersistingVpnStore,
 } from './src/services/persistenceService';
-
-type ScreenName =
-  | 'Home'
-  | 'ImportProfile'
-  | 'SplitTunneling'
-  | 'Diagnostics'
-  | 'Panel';
+import {
+  resolveBackNavigation,
+  type AppScreenName,
+} from './src/services/navigationService';
 
 export default function App(): React.JSX.Element {
-  const [currentScreen, setCurrentScreen] = useState<ScreenName>('Home');
+  const [currentScreen, setCurrentScreen] = useState<AppScreenName>('Home');
   const {themeMode} = useVpnStore();
   const theme = useResolvedTheme(themeMode);
 
@@ -50,8 +47,21 @@ export default function App(): React.JSX.Element {
     };
   }, []);
 
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        const result = resolveBackNavigation(currentScreen);
+        setCurrentScreen(result.nextScreen);
+        return result.handled;
+      },
+    );
+
+    return () => subscription.remove();
+  }, [currentScreen]);
+
   const navigate = useCallback((screen: string) => {
-    setCurrentScreen(screen as ScreenName);
+    setCurrentScreen(screen as AppScreenName);
   }, []);
 
   const goHome = useCallback(() => {

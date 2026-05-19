@@ -10,6 +10,7 @@ import {
   SafeAreaView,
   ScrollView,
   StyleSheet,
+  StatusBar as NativeStatusBar,
   Text,
   TextInput,
   TouchableOpacity,
@@ -25,12 +26,19 @@ import {
   summarizeServerStatus,
   type PanelServerStatus,
 } from '../services/xuiPanelService';
+import {androidHeaderTopPadding} from '../services/layoutService';
 
 interface Props {
   onBack: () => void;
 }
 
 type LoadingAction = 'test' | 'import' | 'restart' | 'stop' | null;
+
+const HEADER_TOP_PADDING = androidHeaderTopPadding(
+  Platform.OS,
+  NativeStatusBar.currentHeight,
+  12,
+);
 
 export function PanelScreen({onBack}: Props): React.JSX.Element {
   const state = useVpnStore();
@@ -634,7 +642,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingTop: HEADER_TOP_PADDING,
+    paddingBottom: 12,
   },
   backButton: {
     width: 70,

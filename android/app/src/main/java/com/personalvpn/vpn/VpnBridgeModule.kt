@@ -40,6 +40,9 @@ class VpnBridgeModule(reactContext: ReactApplicationContext) :
         PersonalVpnService.statusListener = { status ->
             emitStatusChanged(status)
         }
+        PersonalVpnService.errorListener = { code, message ->
+            emitError(code, message)
+        }
     }
 
     override fun getName(): String = MODULE_NAME
@@ -204,9 +207,13 @@ class VpnBridgeModule(reactContext: ReactApplicationContext) :
                 putBoolean("serviceRunning", result.serviceRunning)
                 putBoolean("coreIntegrated", result.coreIntegrated)
                 putBoolean("coreRunning", result.coreRunning)
+                putString("activeProfileName", result.activeProfileName)
+                putString("selectedProtocol", result.selectedProtocol)
                 putString("splitTunnelMode", result.splitTunnelMode)
                 putInt("splitTunnelRuleCount", result.splitTunnelRuleCount)
                 putString("lastError", result.lastError)
+                putString("lastCoreError", result.lastCoreError)
+                putString("lastConnectionError", result.lastConnectionError)
                 putString("batteryOptimizationWarning", result.batteryOptimizationWarning)
                 putDouble("timestamp", result.timestamp.toDouble())
             }

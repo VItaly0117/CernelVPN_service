@@ -10,13 +10,15 @@ export interface SingBoxConfig {
     timestamp: boolean;
   };
   dns: {
-    servers: Array<{tag: string; address: string}>;
+    servers: Array<{tag: string; address: string; detour: string}>;
     final: string;
+    strategy: 'prefer_ipv4';
   };
   inbounds: SingBoxTunInbound[];
   outbounds: Array<Record<string, unknown>>;
   route: {
     auto_detect_interface: boolean;
+    rules: Array<Record<string, unknown>>;
     final: string;
   };
 }
@@ -56,21 +58,28 @@ export function buildSingBoxConfig({
     },
     dns: {
       servers: [
-        {tag: 'cloudflare', address: '1.1.1.1'},
-        {tag: 'google', address: '8.8.8.8'},
+        {
+          tag: 'cloudflare-doh',
+          address: 'https://1.1.1.1/dns-query',
+          detour: 'direct',
+        },
+        {tag: 'cloudflare-tcp', address: 'tcp://1.0.0.1', detour: 'direct'},
       ],
-      final: 'cloudflare',
+      final: 'cloudflare-doh',
+      strategy: 'prefer_ipv4',
     },
     inbounds: [
       buildTunInbound(splitTunnelMode, splitTunnelRules, appPackageName),
     ],
     outbounds: [
       buildProxyOutbound(profile),
+      {type: 'dns', tag: 'dns-out'},
       {type: 'direct', tag: 'direct'},
       {type: 'block', tag: 'block'},
     ],
     route: {
       auto_detect_interface: true,
+      rules: buildRouteRules(profile),
       final: 'proxy',
     },
   };
@@ -90,6 +99,23 @@ function buildTunInbound(
   splitTunnelRules: SplitTunnelRule[],
   appPackageName: string,
 ): SingBoxTunInbound {
+  if (splitTunnelMode === 'vpn_all') {
+    return {
+      type: 'tun',
+      tag: 'tun-in',
+      address: buildTunAddresses(),
+      mtu: 1500,
+      auto_route: true,
+      strict_route: false,
+      stack: 'mixed',
+      platform: {
+        http_proxy: {
+          enabled: false,
+        },
+      },
+    };
+  }
+
   const packageNames = uniqueStrings(
     splitTunnelRules
       .filter(rule => rule.enabled)
@@ -99,8 +125,8 @@ function buildTunInbound(
   const inbound: SingBoxTunInbound = {
     type: 'tun',
     tag: 'tun-in',
-    address: ['172.19.0.1/30'],
-    mtu: 9000,
+    address: buildTunAddresses(),
+    mtu: 1500,
     auto_route: true,
     strict_route: false,
     stack: 'mixed',
@@ -135,6 +161,33 @@ function buildProxyOutbound(profile: VpnProfile): Record<string, unknown> {
     default:
       throw new Error(`Unsupported protocol: ${profile.protocol}`);
   }
+}
+
+function buildTunAddresses(): string[] {
+  return ['172.19.0.1/30', 'fdfe:dcba:9876::1/126'];
+}
+
+function buildRouteRules(profile: VpnProfile): Array<Record<string, unknown>> {
+  const rules: Array<Record<string, unknown>> = [
+    {
+      ip_cidr: '172.19.0.2/32',
+      port: 53,
+      outbound: 'dns-out',
+    },
+  ];
+
+  if (needsUdpFallbackBlock(profile)) {
+    rules.push({
+      network: 'udp',
+      outbound: 'block',
+    });
+  }
+
+  return rules;
+}
+
+function needsUdpFallbackBlock(profile: VpnProfile): boolean {
+  return profile.protocol === 'vless' && Boolean(profile.flow);
 }
 
 function buildVlessOutbound(profile: VpnProfile): Record<string, unknown> {

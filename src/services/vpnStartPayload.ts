@@ -4,6 +4,9 @@ import type {
   VpnProfile,
   VpnStartPayload,
 } from '../types/vpn';
+import {buildSingBoxConfigJson} from './singBoxConfig';
+
+const APP_PACKAGE_NAME = 'com.kernelvpn';
 
 export function createVpnStartPayload({
   profile,
@@ -14,9 +17,17 @@ export function createVpnStartPayload({
   splitTunnelMode: SplitTunnelMode;
   splitTunnelRules: SplitTunnelRule[];
 }): VpnStartPayload {
+  const enabledSplitTunnelRules = splitTunnelRules.filter(rule => rule.enabled);
+
   return {
     profile,
     splitTunnelMode,
-    splitTunnelRules: splitTunnelRules.filter(rule => rule.enabled),
+    splitTunnelRules: enabledSplitTunnelRules,
+    coreConfigJson: buildSingBoxConfigJson({
+      profile,
+      splitTunnelMode,
+      splitTunnelRules: enabledSplitTunnelRules,
+      appPackageName: APP_PACKAGE_NAME,
+    }),
   };
 }

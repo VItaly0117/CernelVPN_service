@@ -48,10 +48,6 @@ export async function connect(profile: VpnProfile): Promise<void> {
       splitTunnelRules: enabledSplitRules,
     });
     await NativeVpn.startVpn(JSON.stringify(payload));
-
-    // Status will be updated via the native event listener
-    // but set a fallback in case the event is delayed
-    vpnStore.setStatus('connected');
   } catch (error: unknown) {
     const message =
       error instanceof Error ? error.message : 'Unknown error starting VPN';

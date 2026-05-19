@@ -12,15 +12,24 @@ import {
   SafeAreaView,
   ActivityIndicator,
   TextInput,
+  Platform,
+  StatusBar as NativeStatusBar,
 } from 'react-native';
 import * as NativeVpn from '../native/NativeVpn';
 import {vpnStore, useVpnStore} from '../store/vpnStore';
 import type {SplitTunnelRule, SplitTunnelMode} from '../types/vpn';
 import {useResolvedTheme, type AppTheme} from '../theme/theme';
+import {androidHeaderTopPadding} from '../services/layoutService';
 
 interface Props {
   onBack: () => void;
 }
+
+const HEADER_TOP_PADDING = androidHeaderTopPadding(
+  Platform.OS,
+  NativeStatusBar.currentHeight,
+  12,
+);
 
 export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
   const storeState = useVpnStore();
@@ -138,6 +147,12 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
           Routing mode
         </Text>
         <View style={[styles.segment, {backgroundColor: theme.colors.background}]}>
+          <ModeButton
+            label="All apps"
+            selected={storeState.splitTunnelMode === 'vpn_all'}
+            theme={theme}
+            onPress={() => setMode('vpn_all')}
+          />
           <ModeButton
             label="All except"
             selected={storeState.splitTunnelMode === 'vpn_all_except_selected'}
@@ -295,7 +310,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingTop: HEADER_TOP_PADDING,
+    paddingBottom: 12,
   },
   backButton: {
     width: 70,

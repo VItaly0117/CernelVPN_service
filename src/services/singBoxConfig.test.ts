@@ -47,6 +47,8 @@ describe('singBoxConfig', () => {
       type: 'tun',
       tag: 'tun-in',
       auto_route: true,
+      address: ['172.19.0.1/30', 'fdfe:dcba:9876::1/126'],
+      mtu: 1500,
       stack: 'mixed',
     });
     expect(config.outbounds[0]).toMatchObject({
@@ -74,6 +76,45 @@ describe('singBoxConfig', () => {
     expect(config.route.final).toBe('proxy');
   });
 
+  it('routes TUN DNS queries through the internal DNS outbound', () => {
+    const config = buildSingBoxConfig({
+      profile: vlessRealityProfile,
+      splitTunnelMode: 'vpn_all',
+      splitTunnelRules: [],
+      appPackageName: 'com.kernelvpn',
+    });
+
+    expect(config.dns.strategy).toBe('prefer_ipv4');
+    expect(config.dns.servers).toEqual([
+      {
+        tag: 'cloudflare-doh',
+        address: 'https://1.1.1.1/dns-query',
+        detour: 'direct',
+      },
+      {tag: 'cloudflare-tcp', address: 'tcp://1.0.0.1', detour: 'direct'},
+    ]);
+    expect(config.outbounds).toContainEqual({type: 'dns', tag: 'dns-out'});
+    expect(config.route.rules).toContainEqual({
+      ip_cidr: '172.19.0.2/32',
+      port: 53,
+      outbound: 'dns-out',
+    });
+  });
+
+  it('blocks non-DNS UDP for VLESS Reality Vision so browsers fall back to TCP', () => {
+    const config = buildSingBoxConfig({
+      profile: vlessRealityProfile,
+      splitTunnelMode: 'vpn_all',
+      splitTunnelRules: [],
+      appPackageName: 'com.kernelvpn',
+    });
+
+    expect(config.route.rules).toContainEqual({
+      network: 'udp',
+      outbound: 'block',
+    });
+  });
+
   it('applies split tunneling package rules in selected-only mode', () => {
     const config = buildSingBoxConfig({
       profile: vlessRealityProfile,
@@ -86,6 +127,18 @@ describe('singBoxConfig', () => {
       'com.android.chrome',
       'com.kernelvpn',
     ]);
+    expect(config.inbounds[0].exclude_package).toBeUndefined();
+  });
+
+  it('routes all apps without package filters in all-apps mode', () => {
+    const config = buildSingBoxConfig({
+      profile: vlessRealityProfile,
+      splitTunnelMode: 'vpn_all',
+      splitTunnelRules: rules,
+      appPackageName: 'com.kernelvpn',
+    });
+
+    expect(config.inbounds[0].include_package).toBeUndefined();
     expect(config.inbounds[0].exclude_package).toBeUndefined();
   });
 

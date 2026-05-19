@@ -7,7 +7,8 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.net.VpnService
 import android.os.Build
-import android.os.ParcelFileDescriptor
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.personalvpn.MainActivity
@@ -15,18 +16,12 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * PersonalVpnService — Android VpnService skeleton.
+ * PersonalVpnService — Android foreground VPN service.
  *
  * Responsibilities:
- *   - Establish a TUN interface via VpnService.Builder
  *   - Run as a foreground service with a persistent notification
  *   - Manage the lifecycle of the VPN tunnel
- *   - Delegate traffic processing to CoreManager (stub for now)
- *
- * Important notes:
- *   - No real traffic routing is done in this MVP
- *   - The TUN fd is established but not read from
- *   - Split tunneling rules are prepared but applied as TODO
+ *   - Delegate TUN creation and traffic processing to CoreManager/libbox
  */
 class PersonalVpnService : VpnService() {
 
@@ -37,9 +32,6 @@ class PersonalVpnService : VpnService() {
         const val ACTION_START = "com.kernelvpn.vpn.START"
         const val ACTION_STOP = "com.kernelvpn.vpn.STOP"
         const val EXTRA_START_PAYLOAD_JSON = "start_payload_json"
-
-        /** Set to true ONLY when the real core is integrated. */
-        const val DEMO_FULL_TUNNEL = false
 
         /** Whether the service is currently running. Checked by DiagnosticsManager. */
         @Volatile
@@ -63,12 +55,27 @@ class PersonalVpnService : VpnService() {
         var currentSplitTunnelRuleCount: Int = 0
             private set
 
+        @Volatile
+        var currentActiveProfileName: String? = null
+            private set
+
+        @Volatile
+        var currentSelectedProtocol: String? = null
+            private set
+
+        @Volatile
+        var lastConnectionError: String? = null
+            private set
+
         /** Callback for status changes — set by VpnBridgeModule. */
         var statusListener: ((VpnStatus) -> Unit)? = null
+
+        /** Callback for errors — set by VpnBridgeModule. */
+        var errorListener: ((String, String) -> Unit)? = null
     }
 
-    private var vpnInterface: ParcelFileDescriptor? = null
     private var core: CoreManager? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     // -------------------------------------------------------------------------
     // Lifecycle
@@ -78,7 +85,7 @@ class PersonalVpnService : VpnService() {
         super.onCreate()
         Log.i(TAG, "onCreate")
         createNotificationChannel()
-        core = CoreManager()
+        core = CoreManager(this)
         coreManager = core
     }
 
@@ -97,6 +104,9 @@ class PersonalVpnService : VpnService() {
                 )
                 currentSplitTunnelMode = startConfig.splitTunnelMode
                 currentSplitTunnelRuleCount = startConfig.splitTunnelRules.count { it.enabled }
+                currentActiveProfileName = startConfig.profileName
+                currentSelectedProtocol = startConfig.protocol
+                lastConnectionError = null
 
                 // Start foreground immediately (Android 8+ requirement)
                 startForeground(NOTIFICATION_ID, buildNotification("Connecting…"))
@@ -104,28 +114,7 @@ class PersonalVpnService : VpnService() {
                 updateStatus(VpnStatus.CONNECTING)
                 isServiceRunning = true
 
-                val success = establishVpnInterface(
-                    startConfig.splitTunnelMode,
-                    startConfig.splitTunnelRules
-                )
-                if (success) {
-                    // Start core (stub)
-                    val fd = vpnInterface?.fd
-                    val coreResult = core?.start(startConfig.profileJson, fd)
-                    if (coreResult?.isSuccess == true) {
-                        updateStatus(VpnStatus.CONNECTED)
-                        updateNotification("Connected")
-                        Log.i(TAG, "VPN tunnel established successfully")
-                    } else {
-                        Log.e(TAG, "Core failed to start")
-                        updateStatus(VpnStatus.ERROR)
-                        updateNotification("Error: core failed")
-                    }
-                } else {
-                    Log.e(TAG, "Failed to establish VPN interface")
-                    updateStatus(VpnStatus.ERROR)
-                    stopSelf()
-                }
+                startCoreAsync(startConfig)
 
                 return START_STICKY
             }
@@ -134,7 +123,7 @@ class PersonalVpnService : VpnService() {
 
     override fun onDestroy() {
         Log.i(TAG, "onDestroy")
-        stopVpnTunnel()
+        stopVpnTunnel(stopSelfAfter = false)
         super.onDestroy()
     }
 
@@ -145,119 +134,69 @@ class PersonalVpnService : VpnService() {
     }
 
     // -------------------------------------------------------------------------
-    // VPN Interface
+    // Core lifecycle
     // -------------------------------------------------------------------------
 
-    /**
-     * Establish the TUN interface using VpnService.Builder.
-     *
-     * Returns true if the interface was established successfully.
-     */
-    private fun establishVpnInterface(
-        splitTunnelMode: String,
-        splitTunnelRules: List<SplitTunnelRuleData>
-    ): Boolean {
-        return try {
-            // Close existing interface if any
-            closeVpnInterface()
+    private fun startCoreAsync(startConfig: StartConfig) {
+        Thread {
+            val result = core?.start(startConfig.coreConfigJson)
+                ?: Result.failure(IllegalStateException("CoreManager is unavailable"))
 
-            val builder = Builder()
-            builder.setSession("KernelVPN")
-            builder.addAddress("10.0.0.2", 32)
-            builder.addDnsServer("1.1.1.1")
-            builder.addDnsServer("8.8.8.8")
-
-            if (DEMO_FULL_TUNNEL) {
-                // Full tunnel route must be enabled only after real core integration, otherwise traffic will be blackholed.
-                builder.addRoute("0.0.0.0", 0) // Route all IPv4 traffic
-            } else {
-                // Safe route for testing VPN lifecycle without breaking internet
-                builder.addRoute("203.0.113.0", 24)
-            }
-
-            applySplitTunneling(builder, splitTunnelRules, splitTunnelMode)
-
-            // Allow the app itself to bypass VPN to prevent loops
-            if (splitTunnelMode != "vpn_selected_only") {
-                try {
-                    builder.addDisallowedApplication(packageName)
-                } catch (e: Exception) {
-                    Log.w(TAG, "Could not disallow own package", e)
+            mainHandler.post {
+                if (result.isSuccess && core?.isRunning() == true) {
+                    updateStatus(VpnStatus.CONNECTED)
+                    updateNotification("Connected")
+                    Log.i(TAG, "VPN core started successfully")
+                } else {
+                    val message = result.exceptionOrNull()?.message
+                        ?: core?.getLastError()
+                        ?: "Core failed to start"
+                    failConnection("CORE_START_FAILED", message)
                 }
             }
-
-            // Set MTU
-            builder.setMtu(1500)
-
-            // Establish the interface
-            vpnInterface = builder.establish()
-
-            if (vpnInterface == null) {
-                Log.e(TAG, "establish() returned null — VPN permission may be revoked")
-                false
-            } else {
-                Log.i(TAG, "VPN interface established, fd=${vpnInterface?.fd}")
-                true
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to establish VPN interface", e)
-            false
-        }
-    }
-
-    /**
-     * Apply split tunneling rules to the VPN builder.
-     *
-     */
-    private fun applySplitTunneling(
-        builder: Builder,
-        rules: List<SplitTunnelRuleData>,
-        mode: String
-    ) {
-        val enabledRules = rules.filter { it.enabled }
-        when (mode) {
-            "vpn_all_except_selected" -> {
-                // VPN everything, except selected apps go direct
-                for (rule in enabledRules) {
-                    try {
-                        builder.addDisallowedApplication(rule.packageName)
-                        Log.d(TAG, "Disallowed: ${rule.packageName}")
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Failed to disallow ${rule.packageName}", e)
-                    }
-                }
-            }
-            "vpn_selected_only" -> {
-                require(enabledRules.isNotEmpty()) {
-                    "At least one app must be selected for vpn_selected_only mode"
-                }
-                // Only selected apps go through VPN
-                for (rule in enabledRules) {
-                    try {
-                        builder.addAllowedApplication(rule.packageName)
-                        Log.d(TAG, "Allowed: ${rule.packageName}")
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Failed to allow ${rule.packageName}", e)
-                    }
-                }
-            }
+        }.apply {
+            name = "KernelVPN-CoreStart"
+            start()
         }
     }
 
     private fun parseStartConfig(rawJson: String?): StartConfig {
         return try {
             if (rawJson.isNullOrBlank()) {
-                return StartConfig("{}", "vpn_all_except_selected", emptyList())
+                return StartConfig(
+                    profileJson = "{}",
+                    coreConfigJson = "",
+                    splitTunnelMode = "vpn_all_except_selected",
+                    splitTunnelRules = emptyList(),
+                    profileName = null,
+                    protocol = null
+                )
             }
 
             val payload = JSONObject(rawJson)
-            val profileJson = payload.optJSONObject("profile")?.toString() ?: rawJson
+            val profile = payload.optJSONObject("profile")
+            val profileJson = profile?.toString() ?: rawJson
+            val coreConfigJson = payload.optString("coreConfigJson", "")
             val mode = payload.optString("splitTunnelMode", "vpn_all_except_selected")
             val rules = parseSplitTunnelRules(payload.optJSONArray("splitTunnelRules"))
-            StartConfig(profileJson, mode, rules)
+            StartConfig(
+                profileJson = profileJson,
+                coreConfigJson = coreConfigJson,
+                splitTunnelMode = mode,
+                splitTunnelRules = rules,
+                profileName = profile?.optString("name")?.takeIf { it.isNotBlank() },
+                protocol = profile?.optString("protocol")?.takeIf { it.isNotBlank() }
+            )
         } catch (e: Exception) {
             Log.w(TAG, "Failed to parse start payload; falling back to profile JSON", e)
-            StartConfig(rawJson ?: "{}", "vpn_all_except_selected", emptyList())
+            StartConfig(
+                profileJson = rawJson ?: "{}",
+                coreConfigJson = "",
+                splitTunnelMode = "vpn_all_except_selected",
+                splitTunnelRules = emptyList(),
+                profileName = null,
+                protocol = null
+            )
         }
     }
 
@@ -285,33 +224,25 @@ class PersonalVpnService : VpnService() {
     // Cleanup
     // -------------------------------------------------------------------------
 
-    private fun stopVpnTunnel() {
+    private fun stopVpnTunnel(stopSelfAfter: Boolean = true) {
         Log.i(TAG, "stopVpnTunnel")
         updateStatus(VpnStatus.DISCONNECTING)
 
         // Stop core
         core?.stop()
 
-        // Close TUN interface
-        closeVpnInterface()
-
         isServiceRunning = false
         coreManager = null
         currentSplitTunnelMode = "vpn_all_except_selected"
         currentSplitTunnelRuleCount = 0
+        currentActiveProfileName = null
+        currentSelectedProtocol = null
         updateStatus(VpnStatus.DISCONNECTED)
 
         stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
-    }
-
-    private fun closeVpnInterface() {
-        try {
-            vpnInterface?.close()
-        } catch (e: Exception) {
-            Log.w(TAG, "Error closing VPN interface", e)
+        if (stopSelfAfter) {
+            stopSelf()
         }
-        vpnInterface = null
     }
 
     // -------------------------------------------------------------------------
@@ -322,6 +253,17 @@ class PersonalVpnService : VpnService() {
         currentStatus = status
         statusListener?.invoke(status)
         Log.d(TAG, "Status updated: ${status.value}")
+    }
+
+    private fun failConnection(code: String, message: String) {
+        lastConnectionError = message
+        isServiceRunning = false
+        core?.stop()
+        updateStatus(VpnStatus.ERROR)
+        updateNotification("Error: core failed")
+        errorListener?.invoke(code, message)
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     // -------------------------------------------------------------------------
@@ -391,7 +333,10 @@ class PersonalVpnService : VpnService() {
 
     data class StartConfig(
         val profileJson: String,
+        val coreConfigJson: String,
         val splitTunnelMode: String,
-        val splitTunnelRules: List<SplitTunnelRuleData>
+        val splitTunnelRules: List<SplitTunnelRuleData>,
+        val profileName: String?,
+        val protocol: String?
     )
 }
