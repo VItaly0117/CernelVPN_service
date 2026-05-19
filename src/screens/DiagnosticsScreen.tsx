@@ -11,9 +11,11 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Platform,
+  Share,
   StatusBar as NativeStatusBar,
 } from 'react-native';
 import {
+  buildDiagnosticsReport,
   fetchDiagnostics,
   formatDiagnostics,
 } from '../services/diagnosticsService';
@@ -40,6 +42,7 @@ export function DiagnosticsScreen({onBack}: Props): React.JSX.Element {
     null,
   );
   const [loading, setLoading] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   const handleRefresh = useCallback(async () => {
     setLoading(true);
@@ -58,6 +61,21 @@ export function DiagnosticsScreen({onBack}: Props): React.JSX.Element {
       console.warn('[Diagnostics] Failed to open battery settings', error);
     }
   }, []);
+
+  const handleShareDiagnostics = useCallback(async () => {
+    setSharing(true);
+    try {
+      const result = diagnostics ?? (await fetchDiagnostics());
+      setDiagnostics(result);
+      await Share.share({
+        message: buildDiagnosticsReport(result),
+      });
+    } catch (error: unknown) {
+      console.warn('[Diagnostics] Failed to share diagnostics', error);
+    } finally {
+      setSharing(false);
+    }
+  }, [diagnostics]);
 
   useEffect(() => {
     handleRefresh();
@@ -90,6 +108,26 @@ export function DiagnosticsScreen({onBack}: Props): React.JSX.Element {
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
             <Text style={styles.refreshText}>Refresh Diagnostics</Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.shareButton,
+            {
+              borderColor: theme.colors.primary,
+              backgroundColor: theme.colors.primarySoft,
+            },
+          ]}
+          onPress={handleShareDiagnostics}
+          disabled={sharing}
+          activeOpacity={0.82}>
+          {sharing ? (
+            <ActivityIndicator size="small" color={theme.colors.primary} />
+          ) : (
+            <Text style={[styles.shareText, {color: theme.colors.primary}]}>
+              Share Diagnostics Report
+            </Text>
           )}
         </TouchableOpacity>
 
@@ -242,13 +280,27 @@ const styles = StyleSheet.create({
   refreshButton: {
     borderRadius: 14,
     marginHorizontal: 16,
-    marginVertical: 16,
+    marginTop: 16,
+    marginBottom: 10,
     paddingVertical: 14,
     alignItems: 'center',
   },
   refreshText: {
     color: '#FFFFFF',
     fontSize: 15,
+    fontWeight: '800',
+  },
+  shareButton: {
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shareText: {
+    fontSize: 14,
     fontWeight: '800',
   },
   resultsCard: {
