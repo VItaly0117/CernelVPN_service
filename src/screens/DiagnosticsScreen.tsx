@@ -10,6 +10,8 @@ import {
   TouchableOpacity,
   SafeAreaView,
   ActivityIndicator,
+  Platform,
+  StatusBar as NativeStatusBar,
 } from 'react-native';
 import {
   fetchDiagnostics,
@@ -19,10 +21,17 @@ import * as NativeVpn from '../native/NativeVpn';
 import type {VpnDiagnosticResult} from '../types/vpn';
 import {useVpnStore} from '../store/vpnStore';
 import {useResolvedTheme, type AppTheme} from '../theme/theme';
+import {androidHeaderTopPadding} from '../services/layoutService';
 
 interface Props {
   onBack: () => void;
 }
+
+const HEADER_TOP_PADDING = androidHeaderTopPadding(
+  Platform.OS,
+  NativeStatusBar.currentHeight,
+  12,
+);
 
 export function DiagnosticsScreen({onBack}: Props): React.JSX.Element {
   const {themeMode} = useVpnStore();
@@ -215,7 +224,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingTop: HEADER_TOP_PADDING,
+    paddingBottom: 12,
   },
   backButton: {
     width: 70,

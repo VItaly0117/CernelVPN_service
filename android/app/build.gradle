@@ -25,6 +25,9 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "0.3.0"
+        ndk {
+            abiFilters "arm64-v8a"
+        }
     }
 
     buildTypes {
@@ -63,4 +66,7 @@ dependencies {
 
     // AndroidX for foreground service / compat
     implementation "androidx.core:core-ktx:1.13.1"
+
+    // Prebuilt sing-box/libbox Android runtime used by CoreManager.
+    implementation "net.clever-vpn:libbox-android:1.0.1"
 }

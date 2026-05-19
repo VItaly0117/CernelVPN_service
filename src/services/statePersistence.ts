@@ -9,6 +9,7 @@ import type {ThemeMode} from '../theme/theme';
 
 const VALID_THEME_MODES = new Set<ThemeMode>(['system', 'light', 'dark']);
 const VALID_SPLIT_MODES = new Set<SplitTunnelMode>([
+  'vpn_all',
   'vpn_all_except_selected',
   'vpn_selected_only',
 ]);

@@ -54,19 +54,28 @@ export interface VpnDiagnosticResult {
   serviceRunning: boolean;
   coreIntegrated: boolean;
   coreRunning: boolean;
+  activeProfileName?: string;
+  selectedProtocol?: string;
   splitTunnelMode?: SplitTunnelMode;
   splitTunnelRuleCount?: number;
   lastError?: string;
+  lastCoreError?: string;
+  lastConnectionError?: string;
+  panelConnectionStatus?: string;
+  panelXrayStatus?: string;
+  panelServerStatus?: string;
   batteryOptimizationWarning?: string;
   timestamp: number; // epoch ms
 }
 
 /**
  * Split tunneling mode.
+ * - vpn_all: route all apps via VPN.
  * - vpn_all_except_selected: route everything via VPN, except selected apps go direct.
  * - vpn_selected_only: only selected apps go through VPN, rest is direct.
  */
 export type SplitTunnelMode =
+  | 'vpn_all'
   | 'vpn_all_except_selected'
   | 'vpn_selected_only';
 
@@ -89,6 +98,7 @@ export interface VpnStartPayload {
   profile: VpnProfile;
   splitTunnelMode: SplitTunnelMode;
   splitTunnelRules: SplitTunnelRule[];
+  coreConfigJson: string;
 }
 
 export interface PersistedVpnState {

@@ -13,15 +13,23 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  StatusBar as NativeStatusBar,
 } from 'react-native';
 import {parseProfileLink, isProfileValid} from '../services/profileParser';
 import {vpnStore, useVpnStore} from '../store/vpnStore';
 import type {VpnProfile} from '../types/vpn';
 import {useResolvedTheme, type AppTheme} from '../theme/theme';
+import {androidHeaderTopPadding} from '../services/layoutService';
 
 interface Props {
   onBack: () => void;
 }
+
+const HEADER_TOP_PADDING = androidHeaderTopPadding(
+  Platform.OS,
+  NativeStatusBar.currentHeight,
+  12,
+);
 
 export function ImportProfileScreen({onBack}: Props): React.JSX.Element {
   const {themeMode} = useVpnStore();
@@ -311,7 +319,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingTop: HEADER_TOP_PADDING,
+    paddingBottom: 12,
   },
   backButton: {
     width: 70,

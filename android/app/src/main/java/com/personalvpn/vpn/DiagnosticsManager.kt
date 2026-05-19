@@ -18,9 +18,13 @@ class DiagnosticsManager(private val context: Context) {
         val serviceRunning: Boolean,
         val coreIntegrated: Boolean,
         val coreRunning: Boolean,
+        val activeProfileName: String?,
+        val selectedProtocol: String?,
         val splitTunnelMode: String,
         val splitTunnelRuleCount: Int,
         val lastError: String?,
+        val lastCoreError: String?,
+        val lastConnectionError: String?,
         val batteryOptimizationWarning: String?,
         val timestamp: Long
     )
@@ -31,11 +35,17 @@ class DiagnosticsManager(private val context: Context) {
     fun collect(): DiagnosticResult {
         val vpnPermission = checkVpnPermission()
         val serviceRunning = PersonalVpnService.isServiceRunning
-        val coreIntegrated = PersonalVpnService.coreManager?.isCoreIntegrated() ?: false
+        val lastCoreError = PersonalVpnService.coreManager?.getLastError()
+            ?: CoreManager.getLibboxSetupError()
+        val coreIntegrated = PersonalVpnService.coreManager?.isCoreIntegrated()
+            ?: CoreManager.isLibboxAvailable()
         val coreRunning = PersonalVpnService.coreManager?.isRunning() ?: false
+        val activeProfileName = PersonalVpnService.currentActiveProfileName
+        val selectedProtocol = PersonalVpnService.currentSelectedProtocol
         val splitTunnelMode = PersonalVpnService.currentSplitTunnelMode
         val splitTunnelRuleCount = PersonalVpnService.currentSplitTunnelRuleCount
-        val lastError = PersonalVpnService.coreManager?.getLastError()
+        val lastConnectionError = PersonalVpnService.lastConnectionError
+        val lastError = lastConnectionError ?: lastCoreError
         val batteryWarning = checkBatteryOptimization()
 
         val result = DiagnosticResult(
@@ -43,9 +53,13 @@ class DiagnosticsManager(private val context: Context) {
             serviceRunning = serviceRunning,
             coreIntegrated = coreIntegrated,
             coreRunning = coreRunning,
+            activeProfileName = activeProfileName,
+            selectedProtocol = selectedProtocol,
             splitTunnelMode = splitTunnelMode,
             splitTunnelRuleCount = splitTunnelRuleCount,
             lastError = lastError,
+            lastCoreError = lastCoreError,
+            lastConnectionError = lastConnectionError,
             batteryOptimizationWarning = batteryWarning,
             timestamp = System.currentTimeMillis()
         )

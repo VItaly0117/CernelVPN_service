@@ -107,9 +107,9 @@ export function ConnectionButton({
 
 const styles = StyleSheet.create({
   button: {
-    width: 184,
-    height: 184,
-    borderRadius: 92,
+    width: 164,
+    height: 164,
+    borderRadius: 82,
     justifyContent: 'center',
     alignItems: 'center',
     alignSelf: 'center',
@@ -129,14 +129,16 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   label: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
     color: '#FFFFFF',
+    fontFamily: 'sans-serif-condensed',
   },
   subLabel: {
     color: 'rgba(255, 255, 255, 0.78)',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     marginTop: 4,
+    fontFamily: 'sans-serif-condensed',
   },
 });
