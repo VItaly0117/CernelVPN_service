@@ -2,6 +2,7 @@ import {
   calculateTrafficRates,
   formatMbps,
   buildTrafficBars,
+  shouldPollTraffic,
 } from './trafficStatsService';
 
 describe('trafficStatsService', () => {
@@ -54,5 +55,12 @@ describe('trafficStatsService', () => {
     expect(Math.min(...bars)).toBeGreaterThanOrEqual(3);
     expect(Math.max(...bars)).toBeLessThanOrEqual(52);
     expect(bars[7]).toBeGreaterThan(bars[0]);
+  });
+
+  it('polls traffic only while connected and app is active', () => {
+    expect(shouldPollTraffic('connected', 'active')).toBe(true);
+    expect(shouldPollTraffic('connected', 'background')).toBe(false);
+    expect(shouldPollTraffic('connecting', 'active')).toBe(false);
+    expect(shouldPollTraffic('disconnected', 'active')).toBe(false);
   });
 });
