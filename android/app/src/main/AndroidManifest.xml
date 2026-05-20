@@ -23,7 +23,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:allowBackup="false"
         android:theme="@style/AppTheme"
-        android:usesCleartextTraffic="true"
+        android:usesCleartextTraffic="false"
         android:supportsRtl="true"
         android:networkSecurityConfig="@xml/network_security_config">
 
@@ -50,6 +50,18 @@
                 <action android:name="android.net.VpnService" />
             </intent-filter>
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="vpn"/>
+        </service>
+
+        <!-- Quick Settings Tile Service -->
+        <service
+            android:name=".vpn.VpnTileService"
+            android:icon="@drawable/ic_vpn_key"
+            android:label="KernelVPN"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
         </service>
 
     </application>

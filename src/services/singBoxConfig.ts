@@ -45,11 +45,21 @@ export function buildSingBoxConfig({
   splitTunnelMode,
   splitTunnelRules,
   appPackageName,
+  adBlockEnabled = false,
+  bypassDomains = [],
+  proxyDomains = [],
+  blockedApps = [],
+  blockAppsEnabled = false,
 }: {
   profile: VpnProfile;
   splitTunnelMode: SplitTunnelMode;
   splitTunnelRules: SplitTunnelRule[];
   appPackageName: string;
+  adBlockEnabled?: boolean;
+  bypassDomains?: string[];
+  proxyDomains?: string[];
+  blockedApps?: string[];
+  blockAppsEnabled?: boolean;
 }): SingBoxConfig {
   return {
     log: {
@@ -57,19 +67,37 @@ export function buildSingBoxConfig({
       timestamp: true,
     },
     dns: {
-      servers: [
-        {
-          tag: 'cloudflare-doh',
-          address: 'https://1.1.1.1/dns-query',
-          detour: 'direct',
-        },
-        {tag: 'cloudflare-tcp', address: 'tcp://1.0.0.1', detour: 'direct'},
-      ],
-      final: 'cloudflare-doh',
+      servers: adBlockEnabled
+        ? [
+            {
+              tag: 'adguard-doh',
+              address: 'https://dns.adguard-dns.com/dns-query',
+              detour: 'proxy',
+            },
+          ]
+        : [
+            {
+              tag: 'google-doh',
+              address: 'https://8.8.8.8/dns-query',
+              detour: 'proxy',
+            },
+            {
+              tag: 'cloudflare-doh',
+              address: 'https://1.1.1.1/dns-query',
+              detour: 'proxy',
+            },
+          ],
+      final: adBlockEnabled ? 'adguard-doh' : 'google-doh',
       strategy: 'prefer_ipv4',
     },
     inbounds: [
-      buildTunInbound(splitTunnelMode, splitTunnelRules, appPackageName),
+      buildTunInbound(
+        splitTunnelMode,
+        splitTunnelRules,
+        appPackageName,
+        blockedApps,
+        blockAppsEnabled,
+      ),
     ],
     outbounds: [
       buildProxyOutbound(profile),
@@ -79,7 +107,13 @@ export function buildSingBoxConfig({
     ],
     route: {
       auto_detect_interface: true,
-      rules: buildRouteRules(profile),
+      rules: buildRouteRules(
+        profile,
+        bypassDomains,
+        proxyDomains,
+        blockedApps,
+        blockAppsEnabled,
+      ),
       final: 'proxy',
     },
   };
@@ -90,6 +124,11 @@ export function buildSingBoxConfigJson(input: {
   splitTunnelMode: SplitTunnelMode;
   splitTunnelRules: SplitTunnelRule[];
   appPackageName: string;
+  adBlockEnabled?: boolean;
+  bypassDomains?: string[];
+  proxyDomains?: string[];
+  blockedApps?: string[];
+  blockAppsEnabled?: boolean;
 }): string {
   return JSON.stringify(buildSingBoxConfig(input));
 }
@@ -98,6 +137,8 @@ function buildTunInbound(
   splitTunnelMode: SplitTunnelMode,
   splitTunnelRules: SplitTunnelRule[],
   appPackageName: string,
+  blockedApps: string[] = [],
+  blockAppsEnabled = false,
 ): SingBoxTunInbound {
   if (splitTunnelMode === 'vpn_all') {
     return {
@@ -116,12 +157,6 @@ function buildTunInbound(
     };
   }
 
-  const packageNames = uniqueStrings(
-    splitTunnelRules
-      .filter(rule => rule.enabled)
-      .map(rule => rule.packageName)
-      .concat(appPackageName),
-  );
   const inbound: SingBoxTunInbound = {
     type: 'tun',
     tag: 'tun-in',
@@ -137,11 +172,33 @@ function buildTunInbound(
     },
   };
 
-  if (packageNames.length > 0) {
-    if (splitTunnelMode === 'vpn_selected_only') {
-      inbound.include_package = packageNames;
-    } else {
-      inbound.exclude_package = packageNames;
+  if (splitTunnelMode === 'vpn_selected_only') {
+    const includePackages = uniqueStrings(
+      splitTunnelRules
+        .filter(rule => rule.enabled)
+        .map(rule => rule.packageName)
+        .concat(appPackageName)
+        .concat(blockAppsEnabled ? blockedApps : []),
+    );
+    if (includePackages.length > 0) {
+      inbound.include_package = includePackages;
+    }
+  } else {
+    // vpn_all_except_selected
+    const excludePackages = uniqueStrings(
+      splitTunnelRules
+        .filter(rule => rule.enabled)
+        .map(rule => rule.packageName)
+        .concat(appPackageName),
+    ).filter(pkg => {
+      // Don't exclude the app if we want to block it, except our own app package!
+      if (pkg === appPackageName) {
+        return true;
+      }
+      return !(blockAppsEnabled && blockedApps.includes(pkg));
+    });
+    if (excludePackages.length > 0) {
+      inbound.exclude_package = excludePackages;
     }
   }
 
@@ -167,7 +224,13 @@ function buildTunAddresses(): string[] {
   return ['172.19.0.1/30', 'fdfe:dcba:9876::1/126'];
 }
 
-function buildRouteRules(profile: VpnProfile): Array<Record<string, unknown>> {
+function buildRouteRules(
+  profile: VpnProfile,
+  bypassDomains: string[] = [],
+  proxyDomains: string[] = [],
+  blockedApps: string[] = [],
+  blockAppsEnabled = false,
+): Array<Record<string, unknown>> {
   const rules: Array<Record<string, unknown>> = [
     {
       ip_cidr: '172.19.0.2/32',
@@ -175,6 +238,27 @@ function buildRouteRules(profile: VpnProfile): Array<Record<string, unknown>> {
       outbound: 'dns-out',
     },
   ];
+
+  if (blockAppsEnabled && blockedApps.length > 0) {
+    rules.push({
+      package_name: blockedApps,
+      outbound: 'block',
+    });
+  }
+
+  if (bypassDomains.length > 0) {
+    rules.push({
+      domain: bypassDomains,
+      outbound: 'direct',
+    });
+  }
+
+  if (proxyDomains.length > 0) {
+    rules.push({
+      domain: proxyDomains,
+      outbound: 'proxy',
+    });
+  }
 
   if (needsUdpFallbackBlock(profile)) {
     rules.push({

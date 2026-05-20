@@ -12,10 +12,20 @@ export function createVpnStartPayload({
   profile,
   splitTunnelMode,
   splitTunnelRules,
+  adBlockEnabled = false,
+  bypassDomains = [],
+  proxyDomains = [],
+  blockedApps = [],
+  blockAppsEnabled = false,
 }: {
   profile: VpnProfile;
   splitTunnelMode: SplitTunnelMode;
   splitTunnelRules: SplitTunnelRule[];
+  adBlockEnabled?: boolean;
+  bypassDomains?: string[];
+  proxyDomains?: string[];
+  blockedApps?: string[];
+  blockAppsEnabled?: boolean;
 }): VpnStartPayload {
   const enabledSplitTunnelRules = splitTunnelRules.filter(rule => rule.enabled);
 
@@ -28,6 +38,11 @@ export function createVpnStartPayload({
       splitTunnelMode,
       splitTunnelRules: enabledSplitTunnelRules,
       appPackageName: APP_PACKAGE_NAME,
+      adBlockEnabled,
+      bypassDomains,
+      proxyDomains,
+      blockedApps,
+      blockAppsEnabled,
     }),
   };
 }

@@ -17,6 +17,8 @@ export interface AppTheme {
     separator: string;
     primary: string;
     primarySoft: string;
+    secondary: string;
+    secondarySoft: string;
     success: string;
     successSoft: string;
     warning: string;
@@ -24,6 +26,15 @@ export interface AppTheme {
     danger: string;
     dangerSoft: string;
     shadow: string;
+    accentGlow: string;
+  };
+  fonts: {
+    regular: string;
+    medium: string;
+    semiBold: string;
+    bold: string;
+    extraBold: string;
+    mono: string;
   };
   radius: {
     sm: number;
@@ -58,41 +69,55 @@ export function getTheme(mode: ResolvedTheme): AppTheme {
     isDark,
     colors: isDark
       ? {
-          background: '#0B0C0F',
-          surface: '#17191F',
-          elevated: '#22252D',
-          text: '#F5F7FA',
-          secondaryText: '#B6BCC7',
-          tertiaryText: '#7E8796',
-          separator: '#30343D',
-          primary: '#0A84FF',
-          primarySoft: '#112A44',
-          success: '#32D74B',
-          successSoft: '#14351F',
-          warning: '#FFD60A',
-          warningSoft: '#3A3210',
-          danger: '#FF453A',
-          dangerSoft: '#3A1716',
+          background: '#050507',
+          surface: '#0D0E12',
+          elevated: '#15171D',
+          text: '#F0F2F5',
+          secondaryText: '#9BA3B2',
+          tertiaryText: '#5C6370',
+          separator: '#1E2028',
+          primary: '#8B5CF6',
+          primarySoft: '#161129',
+          secondary: '#D946EF',
+          secondarySoft: '#260B2A',
+          success: '#00E676',
+          successSoft: '#002E18',
+          warning: '#FFAB00',
+          warningSoft: '#2A1F00',
+          danger: '#FF1744',
+          dangerSoft: '#2A0810',
           shadow: '#000000',
+          accentGlow: 'rgba(139, 92, 246, 0.15)',
         }
       : {
-          background: '#F5F6F8',
+          background: '#F8F9FB',
           surface: '#FFFFFF',
           elevated: '#FFFFFF',
-          text: '#111317',
-          secondaryText: '#5E6673',
-          tertiaryText: '#8A93A1',
-          separator: '#E5E7EB',
-          primary: '#007AFF',
-          primarySoft: '#E7F1FF',
-          success: '#248A3D',
-          successSoft: '#E8F7ED',
-          warning: '#B7791F',
-          warningSoft: '#FFF4D7',
-          danger: '#D92D20',
-          dangerSoft: '#FDECEC',
-          shadow: '#0F172A',
+          text: '#0F1419',
+          secondaryText: '#536471',
+          tertiaryText: '#8B98A5',
+          separator: '#EFF3F4',
+          primary: '#7C3AED',
+          primarySoft: '#F5F3FF',
+          secondary: '#C084FC',
+          secondarySoft: '#FAF5FF',
+          success: '#00A63E',
+          successSoft: '#E6F9ED',
+          warning: '#CC8400',
+          warningSoft: '#FFF7E6',
+          danger: '#DC2626',
+          dangerSoft: '#FEF2F2',
+          shadow: '#1A1A2E',
+          accentGlow: 'rgba(124, 58, 237, 0.08)',
         },
+    fonts: {
+      regular: 'Inter-Regular',
+      medium: 'Inter-Medium',
+      semiBold: 'Inter-SemiBold',
+      bold: 'Inter-Bold',
+      extraBold: 'Inter-ExtraBold',
+      mono: 'monospace',
+    },
     radius: {
       sm: 8,
       md: 12,

@@ -21,9 +21,39 @@ import {
   resolveBackNavigation,
   type AppScreenName,
 } from './src/services/navigationService';
+import {ErrorBoundary} from './src/components/ErrorBoundary';
+import {
+  AppMotionOverlay,
+  type AppMotionMode,
+} from './src/components/AppMotionOverlay';
+import {appLogger} from './src/services/appLogger';
+
+// Register global uncaught exception handlers
+const globalAny: any = global;
+if (globalAny.ErrorUtils) {
+  const globalHandler = globalAny.ErrorUtils.getGlobalHandler();
+  globalAny.ErrorUtils.setGlobalHandler((error: any, isFatal: any) => {
+    appLogger.error('frontend', `Global Uncaught Exception (Fatal: ${isFatal}): ${error?.message || error}`, {
+      raw: error instanceof Error ? error.stack : String(error),
+    });
+    if (globalHandler) {
+      globalHandler(error, isFatal);
+    }
+  });
+}
+
+// Register global unhandled promise rejection tracking
+if (globalAny.Promise && (globalAny.Promise as any).onUnhandled) {
+  (globalAny.Promise as any).onUnhandled = (id: any, rejection: any) => {
+    appLogger.error('frontend', `Unhandled Promise Rejection: ${rejection?.message || rejection}`, {
+      raw: rejection instanceof Error ? rejection.stack : String(rejection),
+    });
+  };
+}
 
 export default function App(): React.JSX.Element {
   const [currentScreen, setCurrentScreen] = useState<AppScreenName>('Home');
+  const [motionMode, setMotionMode] = useState<AppMotionMode>('launch');
   const {themeMode} = useVpnStore();
   const theme = useResolvedTheme(themeMode);
 
@@ -52,6 +82,9 @@ export default function App(): React.JSX.Element {
       'hardwareBackPress',
       () => {
         const result = resolveBackNavigation(currentScreen);
+        if (result.nextScreen !== currentScreen) {
+          setMotionMode('transition');
+        }
         setCurrentScreen(result.nextScreen);
         return result.handled;
       },
@@ -60,16 +93,30 @@ export default function App(): React.JSX.Element {
     return () => subscription.remove();
   }, [currentScreen]);
 
-  const navigate = useCallback((screen: string) => {
-    setCurrentScreen(screen as AppScreenName);
-  }, []);
+  const navigate = useCallback(
+    (screen: string) => {
+      const nextScreen = screen as AppScreenName;
+      if (nextScreen !== currentScreen) {
+        setMotionMode('transition');
+      }
+      setCurrentScreen(nextScreen);
+    },
+    [currentScreen],
+  );
 
   const goHome = useCallback(() => {
+    if (currentScreen !== 'Home') {
+      setMotionMode('transition');
+    }
     setCurrentScreen('Home');
+  }, [currentScreen]);
+
+  const dismissMotion = useCallback(() => {
+    setMotionMode(null);
   }, []);
 
   return (
-    <>
+    <ErrorBoundary>
       <StatusBar
         barStyle={theme.isDark ? 'light-content' : 'dark-content'}
         backgroundColor={theme.colors.background}
@@ -86,6 +133,11 @@ export default function App(): React.JSX.Element {
         <DiagnosticsScreen onBack={goHome} />
       )}
       {currentScreen === 'Panel' && <PanelScreen onBack={goHome} />}
-    </>
+      <AppMotionOverlay
+        mode={motionMode}
+        theme={theme}
+        onDone={dismissMotion}
+      />
+    </ErrorBoundary>
   );
 }

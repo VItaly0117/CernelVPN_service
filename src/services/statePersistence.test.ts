@@ -4,6 +4,7 @@ import {
   serializeVpnState,
 } from './statePersistence';
 import type {PersistedVpnState} from '../types/vpn';
+import {DEFAULT_BYPASS_DOMAINS} from './routingDefaults';
 
 const persistedState: PersistedVpnState = {
   savedProfiles: [
@@ -29,6 +30,14 @@ const persistedState: PersistedVpnState = {
       enabled: true,
     },
   ],
+  splitTunnelRulesWifi: [],
+  splitTunnelRulesCellular: [],
+  differentiateNetworkRules: false,
+  adBlockEnabled: false,
+  bypassDomains: ['yandex.ru', 'ya.ru', 'sber.ru', 'gosuslugi.ru'],
+  proxyDomains: [],
+  blockedApps: ['com.target.app'],
+  blockAppsEnabled: true,
   lastRulesUpdate: 123,
   themeMode: 'dark',
   panelSettings: {
@@ -38,6 +47,7 @@ const persistedState: PersistedVpnState = {
     sessionCookie: 'session=abc123',
     lastStatusAt: 456,
   },
+  persistedErrors: [],
 };
 
 describe('statePersistence', () => {
@@ -68,9 +78,18 @@ describe('statePersistence', () => {
       activeProfileId: null,
       splitTunnelMode: 'vpn_all_except_selected',
       splitTunnelRules: [],
+      splitTunnelRulesWifi: [],
+      splitTunnelRulesCellular: [],
+      differentiateNetworkRules: false,
+      adBlockEnabled: false,
+      bypassDomains: DEFAULT_BYPASS_DOMAINS,
+      proxyDomains: [],
+      blockedApps: [],
+      blockAppsEnabled: false,
       lastRulesUpdate: null,
       themeMode: 'system',
       panelSettings: null,
+      persistedErrors: [],
     });
   });
 });

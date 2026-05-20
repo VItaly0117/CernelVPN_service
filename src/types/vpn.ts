@@ -110,9 +110,18 @@ export interface PersistedVpnState {
   activeProfileId: string | null;
   splitTunnelMode: SplitTunnelMode;
   splitTunnelRules: SplitTunnelRule[];
+  splitTunnelRulesWifi?: SplitTunnelRule[];
+  splitTunnelRulesCellular?: SplitTunnelRule[];
+  differentiateNetworkRules?: boolean;
+  adBlockEnabled?: boolean;
+  bypassDomains?: string[];
+  proxyDomains?: string[];
+  blockedApps?: string[];
+  blockAppsEnabled?: boolean;
   lastRulesUpdate: number | null;
   themeMode: import('../theme/theme').ThemeMode;
   panelSettings: PanelSettings | null;
+  persistedErrors?: any[];
 }
 
 export interface PanelSettings {

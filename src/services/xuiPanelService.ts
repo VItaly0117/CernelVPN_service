@@ -1,6 +1,21 @@
 import type {PanelSettings, VpnProfile} from '../types/vpn';
 import {parseProfileLink} from './profileParser';
 
+export class PanelError extends Error {
+  public url?: string;
+  public status?: number;
+  public suggestion?: string;
+
+  constructor(message: string, url?: string, status?: number, suggestion?: string) {
+    super(message);
+    this.name = 'PanelError';
+    this.url = url;
+    this.status = status;
+    this.suggestion = suggestion;
+    Object.setPrototypeOf(this, PanelError.prototype);
+  }
+}
+
 export interface NormalizedPanelSettings extends PanelSettings {
   origin: string;
   hostname: string;
@@ -167,11 +182,24 @@ export function createXuiPanelClient(
       init.body = encodeFormBody(body ?? {});
     }
 
-    const response = await withTimeout(
-      fetchImpl(buildPanelApiUrl(normalized, endpoint), init),
-      DEFAULT_TIMEOUT_MS,
-    );
-    return parseXuiResponse<T>(response);
+    const apiUrl = buildPanelApiUrl(normalized, endpoint);
+    try {
+      const response = await withTimeout(
+        fetchImpl(apiUrl, init),
+        DEFAULT_TIMEOUT_MS,
+      );
+      return await parseXuiResponse<T>(response, apiUrl);
+    } catch (err: unknown) {
+      if (err instanceof PanelError) {
+        throw err;
+      }
+      const msg = err instanceof Error ? err.message : String(err);
+      let suggestion = 'Make sure the server is reachable and your internet connection is active.';
+      if (msg.includes('timeout')) {
+        suggestion = 'Connection timed out. Check server port and firewall settings.';
+      }
+      throw new PanelError(msg, apiUrl, undefined, suggestion);
+    }
   }
 
   return {
@@ -185,25 +213,35 @@ export function createXuiPanelClient(
       if (!normalized.username || !normalized.password) {
         return sessionCookie;
       }
-      const response = await withTimeout(
-        fetchImpl(buildPanelApiUrl(normalized, '/login'), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'X-Requested-With': 'XMLHttpRequest',
-          },
-          body: encodeFormBody({
-            username: normalized.username,
-            password: normalized.password,
+      const apiUrl = buildPanelApiUrl(normalized, '/login');
+      try {
+        const response = await withTimeout(
+          fetchImpl(apiUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+              'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: encodeFormBody({
+              username: normalized.username,
+              password: normalized.password,
+            }),
           }),
-        }),
-        DEFAULT_TIMEOUT_MS,
-      );
-      await parseXuiResponse<null>(response);
-      sessionCookie =
-        extractSessionCookie(response.headers?.get('set-cookie')) ??
-        sessionCookie;
-      return sessionCookie;
+          DEFAULT_TIMEOUT_MS,
+        );
+        await parseXuiResponse<null>(response, apiUrl);
+        sessionCookie =
+          extractSessionCookie(response.headers?.get('set-cookie')) ??
+          sessionCookie;
+        return sessionCookie;
+      } catch (err: unknown) {
+        if (err instanceof PanelError) {
+          throw err;
+        }
+        const msg = err instanceof Error ? err.message : String(err);
+        let suggestion = 'Check your username, password, and that the panel is accessible.';
+        throw new PanelError(msg, apiUrl, undefined, suggestion);
+      }
     },
 
     getServerStatus(): Promise<PanelServerStatus> {
@@ -381,12 +419,25 @@ function encodeQuery(params: Record<string, string>): string {
 
 async function parseXuiResponse<T>(
   response: PanelFetchResponse,
+  url?: string,
 ): Promise<T> {
   if (!response.ok) {
-    throw new Error(`3X-UI request failed with HTTP ${response.status}`);
+    let suggestion = 'Check your Panel URL and network connection.';
+    if (response.status === 404) {
+      suggestion = 'The API endpoint was not found. Verify your subpath / URL (e.g. trailing slash or Web Base Path).';
+    } else if (response.status === 401 || response.status === 403) {
+      suggestion = 'Unauthorized access. Please check your username, password, or session cookie.';
+    }
+    throw new PanelError(`3X-UI request failed with HTTP ${response.status}`, url, response.status, suggestion);
   }
 
-  const payload = (await response.json()) as XuiMessage<T> | T;
+  let payload: XuiMessage<T> | T;
+  try {
+    payload = (await response.json()) as XuiMessage<T> | T;
+  } catch (err: unknown) {
+    throw new PanelError('Failed to parse 3X-UI JSON response', url, response.status, 'Ensure the URL belongs to a valid 3X-UI panel.');
+  }
+
   if (
     payload &&
     typeof payload === 'object' &&
@@ -394,7 +445,11 @@ async function parseXuiResponse<T>(
   ) {
     const message = payload as XuiMessage<T>;
     if (!message.success) {
-      throw new Error(message.msg || '3X-UI request failed');
+      let suggestion = 'Verify that the operation is allowed and inbounds are correctly configured.';
+      if (message.msg?.toLowerCase().includes('username') || message.msg?.toLowerCase().includes('password')) {
+        suggestion = 'Incorrect username or password. Check your credentials.';
+      }
+      throw new PanelError(message.msg || '3X-UI request failed', url, response.status, suggestion);
     }
     return message.obj as T;
   }

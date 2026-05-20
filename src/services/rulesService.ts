@@ -100,10 +100,11 @@ export async function applyRulesManifest(
       ),
     );
   }
+  vpnStore.setBypassDomains(uniqueStrings(manifest.rules.directDomains));
+  vpnStore.setProxyDomains(uniqueStrings(manifest.rules.proxyDomains));
   vpnStore.setLastRulesUpdate(Date.now());
 
-  // TODO: Persist to storage
-  // TODO: Propagate domain rules to core config
+  // Persistence is handled by the global store persistence subscription.
 
   console.log(
     `[RulesService] Applied manifest v${manifest.version} ` +
@@ -111,4 +112,8 @@ export async function applyRulesManifest(
       `${manifest.rules.directDomains.length} direct domains, ` +
       `${manifest.rules.proxyDomains.length} proxy domains)`,
   );
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values.map(value => value.trim()).filter(Boolean)));
 }

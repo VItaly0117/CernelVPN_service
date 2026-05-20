@@ -6,6 +6,7 @@ import type {
   VpnProfile,
 } from '../types/vpn';
 import type {ThemeMode} from '../theme/theme';
+import {DEFAULT_BYPASS_DOMAINS} from './routingDefaults';
 
 const VALID_THEME_MODES = new Set<ThemeMode>(['system', 'light', 'dark']);
 const VALID_SPLIT_MODES = new Set<SplitTunnelMode>([
@@ -23,9 +24,18 @@ export function serializeVpnState(state: PersistedVpnState): string {
     activeProfileId: state.activeProfileId,
     splitTunnelMode: state.splitTunnelMode,
     splitTunnelRules: state.splitTunnelRules,
+    splitTunnelRulesWifi: state.splitTunnelRulesWifi,
+    splitTunnelRulesCellular: state.splitTunnelRulesCellular,
+    differentiateNetworkRules: state.differentiateNetworkRules,
+    adBlockEnabled: state.adBlockEnabled,
+    bypassDomains: state.bypassDomains,
+    proxyDomains: state.proxyDomains,
+    blockedApps: state.blockedApps,
+    blockAppsEnabled: state.blockAppsEnabled,
     lastRulesUpdate: state.lastRulesUpdate,
     themeMode: state.themeMode,
     panelSettings: state.panelSettings,
+    persistedErrors: state.persistedErrors,
   });
 }
 
@@ -54,6 +64,33 @@ export function parsePersistedVpnState(
   const splitTunnelRules = Array.isArray(record.splitTunnelRules)
     ? record.splitTunnelRules.filter(isSplitTunnelRule)
     : [];
+  const splitTunnelRulesWifi = Array.isArray(record.splitTunnelRulesWifi)
+    ? record.splitTunnelRulesWifi.filter(isSplitTunnelRule)
+    : [];
+  const splitTunnelRulesCellular = Array.isArray(record.splitTunnelRulesCellular)
+    ? record.splitTunnelRulesCellular.filter(isSplitTunnelRule)
+    : [];
+  const differentiateNetworkRules =
+    typeof record.differentiateNetworkRules === 'boolean'
+      ? record.differentiateNetworkRules
+      : false;
+  const adBlockEnabled =
+    typeof record.adBlockEnabled === 'boolean'
+      ? record.adBlockEnabled
+      : false;
+  const bypassDomains = Array.isArray(record.bypassDomains)
+    ? record.bypassDomains.filter(d => typeof d === 'string')
+    : DEFAULT_BYPASS_DOMAINS;
+  const proxyDomains = Array.isArray(record.proxyDomains)
+    ? record.proxyDomains.filter(d => typeof d === 'string')
+    : [];
+  const blockedApps = Array.isArray(record.blockedApps)
+    ? record.blockedApps.filter(d => typeof d === 'string')
+    : [];
+  const blockAppsEnabled =
+    typeof record.blockAppsEnabled === 'boolean'
+      ? record.blockAppsEnabled
+      : false;
   const activeProfileId =
     typeof record.activeProfileId === 'string' &&
     savedProfiles.some(profile => profile.id === record.activeProfileId)
@@ -74,15 +111,27 @@ export function parsePersistedVpnState(
   const panelSettings = isPanelSettings(record.panelSettings)
     ? record.panelSettings
     : null;
+  const persistedErrors = Array.isArray(record.persistedErrors)
+    ? record.persistedErrors
+    : [];
 
   return {
     savedProfiles,
     activeProfileId,
     splitTunnelMode,
     splitTunnelRules,
+    splitTunnelRulesWifi,
+    splitTunnelRulesCellular,
+    differentiateNetworkRules,
+    adBlockEnabled,
+    bypassDomains,
+    proxyDomains,
+    blockedApps,
+    blockAppsEnabled,
     lastRulesUpdate,
     themeMode,
     panelSettings,
+    persistedErrors,
   };
 }
 

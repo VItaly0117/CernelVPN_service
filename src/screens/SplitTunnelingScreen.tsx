@@ -1,5 +1,6 @@
 /**
- * SplitTunnelingScreen — Choose which apps go through KernelVPN.
+ * Routing & Filters Screen (formerly SplitTunnelingScreen)
+ * Contains Apps split tunneling, Custom Domain routing, and AdBlocker/Rule Settings.
  */
 import React, {memo, useState, useEffect, useCallback, useMemo} from 'react';
 import {
@@ -12,6 +13,7 @@ import {
   SafeAreaView,
   ActivityIndicator,
   TextInput,
+  ScrollView,
   Platform,
   StatusBar as NativeStatusBar,
 } from 'react-native';
@@ -34,9 +36,65 @@ const HEADER_TOP_PADDING = androidHeaderTopPadding(
 export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
   const storeState = useVpnStore();
   const theme = useResolvedTheme(storeState.themeMode);
+  
+  // Tabs & Network Sub-tabs
+  const [activeTab, setActiveTab] = useState<'apps' | 'appblock' | 'domains' | 'settings'>('apps');
+  const [activeNetworkTab, setActiveNetworkTab] = useState<'wifi' | 'cellular'>('wifi');
+  
+  // Custom Domain Routing State
+  const [newDomainText, setNewDomainText] = useState('');
+  const [newDomainType, setNewDomainType] = useState<'bypass' | 'proxy'>('bypass');
+
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const blockRules = useMemo(() => {
+    return storeState.splitTunnelRules.map(app => ({
+      packageName: app.packageName,
+      appName: app.appName,
+      enabled: (storeState.blockedApps || []).includes(app.packageName),
+    }));
+  }, [storeState.splitTunnelRules, storeState.blockedApps]);
+
+  const filteredBlockRules = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) {
+      return blockRules;
+    }
+    return blockRules.filter(
+      rule =>
+        rule.appName.toLowerCase().includes(needle) ||
+        rule.packageName.toLowerCase().includes(needle),
+    );
+  }, [query, blockRules]);
+
+  const toggleBlockedApp = useCallback(
+    (packageName: string) => {
+      const current = storeState.blockedApps || [];
+      const updated = current.includes(packageName)
+        ? current.filter(p => p !== packageName)
+        : [...current, packageName];
+      vpnStore.setBlockedApps(updated);
+    },
+    [storeState.blockedApps],
+  );
+
+  const renderBlockApp = useCallback(
+    ({item}: {item: {packageName: string; appName: string; enabled: boolean}}) => (
+      <AppRuleRow
+        rule={{
+          packageName: item.packageName,
+          appName: item.appName,
+          routing: 'proxy',
+          enabled: item.enabled,
+        }}
+        theme={theme}
+        onToggle={toggleBlockedApp}
+      />
+    ),
+    [theme, toggleBlockedApp],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -49,6 +107,14 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
           const existingPkgs = new Set(
             storeState.splitTunnelRules.map(r => r.packageName),
           );
+          const existingPkgsWifi = new Set(
+            storeState.splitTunnelRulesWifi.map(r => r.packageName),
+          );
+          const existingPkgsCellular = new Set(
+            storeState.splitTunnelRulesCellular.map(r => r.packageName),
+          );
+
+          // Update standard rules
           const newRules: SplitTunnelRule[] = installed
             .filter(app => !existingPkgs.has(app.packageName))
             .map(app => ({
@@ -63,6 +129,38 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
               ...newRules,
             ]);
           }
+
+          // Update Wi-Fi rules
+          const newRulesWifi: SplitTunnelRule[] = installed
+            .filter(app => !existingPkgsWifi.has(app.packageName))
+            .map(app => ({
+              packageName: app.packageName,
+              appName: app.appName,
+              routing: 'proxy',
+              enabled: false,
+            }));
+          if (newRulesWifi.length > 0 || storeState.splitTunnelRulesWifi.length === 0) {
+            vpnStore.setSplitTunnelRulesWifi([
+              ...storeState.splitTunnelRulesWifi,
+              ...newRulesWifi,
+            ]);
+          }
+
+          // Update Cellular rules
+          const newRulesCellular: SplitTunnelRule[] = installed
+            .filter(app => !existingPkgsCellular.has(app.packageName))
+            .map(app => ({
+              packageName: app.packageName,
+              appName: app.appName,
+              routing: 'proxy',
+              enabled: false,
+            }));
+          if (newRulesCellular.length > 0 || storeState.splitTunnelRulesCellular.length === 0) {
+            vpnStore.setSplitTunnelRulesCellular([
+              ...storeState.splitTunnelRulesCellular,
+              ...newRulesCellular,
+            ]);
+          }
         }
       } catch (err: unknown) {
         if (!cancelled) {
@@ -73,13 +171,14 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
           );
         }
       } finally {
-        if (!cancelled) {setLoading(false);}
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-    // Load once when the screen opens; rules update through the store.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -87,31 +186,72 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
     vpnStore.setSplitTunnelMode(mode);
   }, []);
 
+  const rules = useMemo(() => {
+    if (storeState.differentiateNetworkRules) {
+      return activeNetworkTab === 'wifi'
+        ? storeState.splitTunnelRulesWifi
+        : storeState.splitTunnelRulesCellular;
+    }
+    return storeState.splitTunnelRules;
+  }, [
+    storeState.differentiateNetworkRules,
+    activeNetworkTab,
+    storeState.splitTunnelRules,
+    storeState.splitTunnelRulesWifi,
+    storeState.splitTunnelRulesCellular,
+  ]);
+
   const toggleApp = useCallback(
     (packageName: string) => {
-      const rule = storeState.splitTunnelRules.find(
-        item => item.packageName === packageName,
-      );
-      if (rule) {
-        vpnStore.updateSplitTunnelRule(packageName, {enabled: !rule.enabled});
+      if (storeState.differentiateNetworkRules) {
+        if (activeNetworkTab === 'wifi') {
+          const rule = storeState.splitTunnelRulesWifi.find(
+            item => item.packageName === packageName,
+          );
+          if (rule) {
+            vpnStore.updateSplitTunnelRuleWifi(packageName, {enabled: !rule.enabled});
+          }
+        } else {
+          const rule = storeState.splitTunnelRulesCellular.find(
+            item => item.packageName === packageName,
+          );
+          if (rule) {
+            vpnStore.updateSplitTunnelRuleCellular(packageName, {enabled: !rule.enabled});
+          }
+        }
+      } else {
+        const rule = storeState.splitTunnelRules.find(
+          item => item.packageName === packageName,
+        );
+        if (rule) {
+          vpnStore.updateSplitTunnelRule(packageName, {enabled: !rule.enabled});
+        }
       }
     },
-    [storeState.splitTunnelRules],
+    [
+      storeState.differentiateNetworkRules,
+      activeNetworkTab,
+      storeState.splitTunnelRules,
+      storeState.splitTunnelRulesWifi,
+      storeState.splitTunnelRulesCellular,
+    ],
   );
 
   const filteredRules = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    if (!needle) {return storeState.splitTunnelRules;}
-    return storeState.splitTunnelRules.filter(
+    if (!needle) {
+      return rules;
+    }
+    return rules.filter(
       rule =>
         rule.appName.toLowerCase().includes(needle) ||
         rule.packageName.toLowerCase().includes(needle),
     );
-  }, [query, storeState.splitTunnelRules]);
+  }, [query, rules]);
 
-  const selectedCount = storeState.splitTunnelRules.filter(
-    rule => rule.enabled,
-  ).length;
+  const selectedCount = useMemo(() => {
+    return rules.filter(rule => rule.enabled).length;
+  }, [rules]);
 
   const renderApp = useCallback(
     ({item}: {item: SplitTunnelRule}) => (
@@ -123,6 +263,8 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
   return (
     <SafeAreaView
       style={[styles.container, {backgroundColor: theme.colors.background}]}>
+      
+      {/* Header */}
       <View style={styles.headerRow}>
         <TouchableOpacity onPress={onBack} style={styles.backButton}>
           <Text style={[styles.backText, {color: theme.colors.primary}]}>
@@ -130,105 +272,436 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
           </Text>
         </TouchableOpacity>
         <Text style={[styles.title, {color: theme.colors.text}]}>
-          Split Tunneling
+          Routing & Filters
         </Text>
         <View style={styles.backButton} />
       </View>
 
-      <View
-        style={[
-          styles.modeCard,
-          {
-            backgroundColor: theme.colors.surface,
-            borderColor: theme.colors.separator,
-          },
-        ]}>
-        <Text style={[styles.modeLabel, {color: theme.colors.tertiaryText}]}>
-          Routing mode
-        </Text>
-        <View style={[styles.segment, {backgroundColor: theme.colors.background}]}>
-          <ModeButton
-            label="All apps"
-            selected={storeState.splitTunnelMode === 'vpn_all'}
-            theme={theme}
-            onPress={() => setMode('vpn_all')}
-          />
-          <ModeButton
-            label="All except"
-            selected={storeState.splitTunnelMode === 'vpn_all_except_selected'}
-            theme={theme}
-            onPress={() => setMode('vpn_all_except_selected')}
-          />
-          <ModeButton
-            label="Selected only"
-            selected={storeState.splitTunnelMode === 'vpn_selected_only'}
-            theme={theme}
-            onPress={() => setMode('vpn_selected_only')}
-          />
-        </View>
-        <Text style={[styles.modeHint, {color: theme.colors.secondaryText}]}>
-          {selectedCount} selected app{selectedCount === 1 ? '' : 's'}
-        </Text>
+      {/* Top Segmented Navigation Tabs */}
+      <View style={[styles.tabBar, {backgroundColor: theme.colors.surface, borderColor: theme.colors.separator}]}>
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'apps' && {borderBottomColor: theme.colors.primary}]}
+          onPress={() => setActiveTab('apps')}>
+          <Text style={[styles.tabText, {color: activeTab === 'apps' ? theme.colors.primary : theme.colors.secondaryText, fontFamily: theme.fonts.bold}]}>
+            Apps
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'appblock' && {borderBottomColor: theme.colors.primary}]}
+          onPress={() => setActiveTab('appblock')}>
+          <Text style={[styles.tabText, {color: activeTab === 'appblock' ? theme.colors.primary : theme.colors.secondaryText, fontFamily: theme.fonts.bold}]}>
+            App Block
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'domains' && {borderBottomColor: theme.colors.primary}]}
+          onPress={() => setActiveTab('domains')}>
+          <Text style={[styles.tabText, {color: activeTab === 'domains' ? theme.colors.primary : theme.colors.secondaryText, fontFamily: theme.fonts.bold}]}>
+            Domains
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'settings' && {borderBottomColor: theme.colors.primary}]}
+          onPress={() => setActiveTab('settings')}>
+          <Text style={[styles.tabText, {color: activeTab === 'settings' ? theme.colors.primary : theme.colors.secondaryText, fontFamily: theme.fonts.bold}]}>
+            Settings
+          </Text>
+        </TouchableOpacity>
       </View>
 
-      <TextInput
-        style={[
-          styles.search,
-          {
-            backgroundColor: theme.colors.surface,
-            borderColor: theme.colors.separator,
-            color: theme.colors.text,
-          },
-        ]}
-        value={query}
-        onChangeText={setQuery}
-        placeholder="Search apps"
-        placeholderTextColor={theme.colors.tertiaryText}
-        autoCapitalize="none"
-        autoCorrect={false}
-      />
+      {/* -------------------- SETTINGS TAB -------------------- */}
+      {activeTab === 'settings' && (
+        <ScrollView contentContainerStyle={styles.settingsContent}>
+          {/* AdBlocker Switch Card */}
+          <View style={[styles.card, {backgroundColor: theme.colors.surface, borderColor: theme.colors.separator}]}>
+            <View style={styles.cardHeader}>
+              <View style={styles.cardHeaderInfo}>
+                <Text style={[styles.cardTitle, {color: theme.colors.text, fontFamily: theme.fonts.bold}]}>
+                  🛡️ AdBlocker (DNS DoH)
+                </Text>
+                <Text style={[styles.cardDesc, {color: theme.colors.secondaryText, fontFamily: theme.fonts.medium}]}>
+                  Block advertisements, banners, and malicious tracking domains globally using secure AdGuard DoH resolvers detour through your VPN. Reduces page load time.
+                </Text>
+              </View>
+              <Switch
+                value={storeState.adBlockEnabled}
+                onValueChange={(val) => vpnStore.setAdBlockEnabled(val)}
+                trackColor={{
+                  false: theme.isDark ? '#30343D' : '#D7DCE3',
+                  true: theme.colors.primary,
+                }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+          </View>
 
-      {loading && (
-        <View style={styles.centerBox}>
-          <ActivityIndicator size="large" color={theme.colors.primary} />
-          <Text style={[styles.loadingText, {color: theme.colors.secondaryText}]}>
-            Loading installed apps…
-          </Text>
-        </View>
+          {/* Network-Aware Rules Switch Card */}
+          <View style={[styles.card, {backgroundColor: theme.colors.surface, borderColor: theme.colors.separator}]}>
+            <View style={styles.cardHeader}>
+              <View style={styles.cardHeaderInfo}>
+                <Text style={[styles.cardTitle, {color: theme.colors.text, fontFamily: theme.fonts.bold}]}>
+                  📶 Network-Aware Routing
+                </Text>
+                <Text style={[styles.cardDesc, {color: theme.colors.secondaryText, fontFamily: theme.fonts.medium}]}>
+                  Define different app routing rules when on Wi-Fi versus Mobile Data (Cellular). The VPN client automatically reconstructs the tunnel and applies correct rules when switching network connections.
+                </Text>
+              </View>
+              <Switch
+                value={storeState.differentiateNetworkRules}
+                onValueChange={(val) => vpnStore.setDifferentiateNetworkRules(val)}
+                trackColor={{
+                  false: theme.isDark ? '#30343D' : '#D7DCE3',
+                  true: theme.colors.primary,
+                }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+          </View>
+        </ScrollView>
       )}
 
-      {error && (
-        <View
-          style={[
-            styles.errorCard,
-            {
-              backgroundColor: theme.colors.dangerSoft,
-              borderColor: theme.colors.danger,
-            },
-          ]}>
-          <Text style={[styles.errorText, {color: theme.colors.danger}]}>
-            {error}
-          </Text>
-        </View>
-      )}
-
-      {!loading && !error && (
-        <FlatList
-          data={filteredRules}
-          keyExtractor={item => item.packageName}
-          renderItem={renderApp}
-          contentContainerStyle={styles.listContent}
-          initialNumToRender={18}
-          maxToRenderPerBatch={18}
-          windowSize={7}
-          removeClippedSubviews
-          ListEmptyComponent={
-            <Text style={[styles.emptyText, {color: theme.colors.tertiaryText}]}>
-              No apps found
+      {/* -------------------- DOMAINS TAB -------------------- */}
+      {activeTab === 'domains' && (
+        <View style={styles.tabContent}>
+          {/* Add custom domain card */}
+          <View style={[styles.card, {backgroundColor: theme.colors.surface, borderColor: theme.colors.separator, marginHorizontal: 16, marginTop: 8, padding: 14}]}>
+            <Text style={[styles.cardTitle, {color: theme.colors.text, fontFamily: theme.fonts.bold, marginBottom: 8, fontSize: 14}]}>
+              Add Custom Domain Rule
             </Text>
-          }
-        />
+            <View style={styles.addDomainRow}>
+              <TextInput
+                style={[
+                  styles.domainInput,
+                  {
+                    backgroundColor: theme.colors.background,
+                    borderColor: theme.colors.separator,
+                    color: theme.colors.text,
+                    fontFamily: theme.fonts.medium,
+                  },
+                ]}
+                value={newDomainText}
+                onChangeText={setNewDomainText}
+                placeholder="e.g. yandex.ru"
+                placeholderTextColor={theme.colors.tertiaryText}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <TouchableOpacity
+                style={[styles.addButton, {backgroundColor: theme.colors.primary}]}
+                onPress={() => {
+                  const cleaned = newDomainText.trim().toLowerCase();
+                  if (!cleaned) {
+                    return;
+                  }
+                  if (newDomainType === 'bypass') {
+                    if (storeState.bypassDomains.includes(cleaned)) {
+                      return;
+                    }
+                    vpnStore.setBypassDomains([...storeState.bypassDomains, cleaned]);
+                  } else {
+                    if (storeState.proxyDomains.includes(cleaned)) {
+                      return;
+                    }
+                    vpnStore.setProxyDomains([...storeState.proxyDomains, cleaned]);
+                  }
+                  setNewDomainText('');
+                }}>
+                <Text style={styles.addButtonText}>Add</Text>
+              </TouchableOpacity>
+            </View>
+            {/* Choose rule category */}
+            <View style={styles.domainTypeRow}>
+              <TouchableOpacity
+                style={[
+                  styles.domainTypeBtn,
+                  {borderColor: theme.colors.separator},
+                  newDomainType === 'bypass' && {backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.primary},
+                ]}
+                activeOpacity={0.78}
+                onPress={() => setNewDomainType('bypass')}>
+                <Text style={[styles.domainTypeBtnText, {color: newDomainType === 'bypass' ? theme.colors.primary : theme.colors.secondaryText, fontFamily: theme.fonts.bold}]}>
+                  Bypass VPN (Direct)
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.domainTypeBtn,
+                  {borderColor: theme.colors.separator},
+                  newDomainType === 'proxy' && {backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.primary},
+                ]}
+                activeOpacity={0.78}
+                onPress={() => setNewDomainType('proxy')}>
+                <Text style={[styles.domainTypeBtnText, {color: newDomainType === 'proxy' ? theme.colors.primary : theme.colors.secondaryText, fontFamily: theme.fonts.bold}]}>
+                  Route VPN (Proxy)
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Scrolled lists of Bypass/Proxy domains */}
+          <ScrollView style={styles.domainsListsScroll} contentContainerStyle={{paddingBottom: 40}}>
+            <Text style={[styles.sectionHeading, {color: theme.colors.tertiaryText, fontFamily: theme.fonts.bold}]}>
+              Bypass List (Local Services / Fast Direct Link)
+            </Text>
+            {storeState.bypassDomains.length === 0 ? (
+              <Text style={[styles.domainEmptyText, {color: theme.colors.tertiaryText}]}>No domains in bypass list</Text>
+            ) : (
+              storeState.bypassDomains.map((dom) => (
+                <View key={dom} style={[styles.domainRow, {backgroundColor: theme.colors.surface, borderColor: theme.colors.separator}]}>
+                  <Text style={[styles.domainName, {color: theme.colors.text, fontFamily: theme.fonts.semiBold}]}>{dom}</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      vpnStore.setBypassDomains(storeState.bypassDomains.filter(d => d !== dom));
+                    }}
+                    style={styles.deleteBtn}>
+                    <Text style={{color: theme.colors.danger, fontWeight: 'bold', fontSize: 13}}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+              ))
+            )}
+
+            <Text style={[styles.sectionHeading, {color: theme.colors.tertiaryText, fontFamily: theme.fonts.bold, marginTop: 18}]}>
+              Proxy List (Force Encrypted / Locked Services)
+            </Text>
+            {storeState.proxyDomains.length === 0 ? (
+              <Text style={[styles.domainEmptyText, {color: theme.colors.tertiaryText}]}>No domains in proxy list</Text>
+            ) : (
+              storeState.proxyDomains.map((dom) => (
+                <View key={dom} style={[styles.domainRow, {backgroundColor: theme.colors.surface, borderColor: theme.colors.separator}]}>
+                  <Text style={[styles.domainName, {color: theme.colors.text, fontFamily: theme.fonts.semiBold}]}>{dom}</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      vpnStore.setProxyDomains(storeState.proxyDomains.filter(d => d !== dom));
+                    }}
+                    style={styles.deleteBtn}>
+                    <Text style={{color: theme.colors.danger, fontWeight: 'bold', fontSize: 13}}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+              ))
+            )}
+          </ScrollView>
+        </View>
       )}
+
+      {/* -------------------- APP BLOCK TAB -------------------- */}
+      {activeTab === 'appblock' && (
+        <View style={styles.tabContent}>
+          {/* Firewall Switch Card */}
+          <View style={[styles.modeCard, {backgroundColor: theme.colors.surface, borderColor: theme.colors.separator, marginBottom: 8}]}>
+            <View style={styles.cardHeader}>
+              <View style={styles.cardHeaderInfo}>
+                <Text style={[styles.cardTitle, {color: theme.colors.text, fontFamily: theme.fonts.bold, fontSize: 15}]}>
+                  🚫 App Firewall
+                </Text>
+                <Text style={[styles.cardDesc, {color: theme.colors.secondaryText, fontFamily: theme.fonts.medium, marginTop: 4}]}>
+                  Prevent selected apps from accessing the network entirely when the VPN is active. Blocked apps will have no internet.
+                </Text>
+              </View>
+              <Switch
+                value={storeState.blockAppsEnabled || false}
+                onValueChange={(val) => vpnStore.setBlockAppsEnabled(val)}
+                trackColor={{
+                  false: theme.isDark ? '#30343D' : '#D7DCE3',
+                  true: theme.colors.primary,
+                }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+            <Text style={[styles.modeHint, {color: theme.colors.secondaryText, marginTop: 8}]}>
+              {(storeState.blockedApps || []).length} app{(storeState.blockedApps || []).length === 1 ? '' : 's'} blacklisted
+            </Text>
+          </View>
+
+          {/* Search Blocked Apps */}
+          <TextInput
+            style={[
+              styles.search,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.separator,
+                color: theme.colors.text,
+                marginBottom: 8,
+              },
+            ]}
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search apps to block"
+            placeholderTextColor={theme.colors.tertiaryText}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+
+          {loading && (
+            <View style={styles.centerBox}>
+              <ActivityIndicator size="large" color={theme.colors.primary} />
+              <Text style={[styles.loadingText, {color: theme.colors.secondaryText}]}>
+                Loading installed apps…
+              </Text>
+            </View>
+          )}
+
+          {error && (
+            <View
+              style={[
+                styles.errorCard,
+                {
+                  backgroundColor: theme.colors.dangerSoft,
+                  borderColor: theme.colors.danger,
+                },
+              ]}>
+              <Text style={[styles.errorText, {color: theme.colors.danger}]}>
+                {error}
+              </Text>
+            </View>
+          )}
+
+          {!loading && !error && (
+            <FlatList
+              data={filteredBlockRules}
+              keyExtractor={item => item.packageName}
+              renderItem={renderBlockApp}
+              contentContainerStyle={styles.listContent}
+              initialNumToRender={18}
+              maxToRenderPerBatch={18}
+              windowSize={7}
+              removeClippedSubviews
+              ListEmptyComponent={
+                <Text style={[styles.emptyText, {color: theme.colors.tertiaryText}]}>
+                  No apps found
+                </Text>
+              }
+            />
+          )}
+        </View>
+      )}
+
+      {/* -------------------- APPS TAB -------------------- */}
+      {activeTab === 'apps' && (
+        <View style={styles.tabContent}>
+          {/* Mode Card */}
+          <View
+            style={[
+              styles.modeCard,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.separator,
+                marginBottom: 8,
+              },
+            ]}>
+            <Text style={[styles.modeLabel, {color: theme.colors.tertiaryText}]}>
+              Routing mode
+            </Text>
+            <View style={[styles.segment, {backgroundColor: theme.colors.background}]}>
+              <ModeButton
+                label="All apps"
+                selected={storeState.splitTunnelMode === 'vpn_all'}
+                theme={theme}
+                onPress={() => setMode('vpn_all')}
+              />
+              <ModeButton
+                label="All except"
+                selected={storeState.splitTunnelMode === 'vpn_all_except_selected'}
+                theme={theme}
+                onPress={() => setMode('vpn_all_except_selected')}
+              />
+              <ModeButton
+                label="Selected only"
+                selected={storeState.splitTunnelMode === 'vpn_selected_only'}
+                theme={theme}
+                onPress={() => setMode('vpn_selected_only')}
+              />
+            </View>
+
+            {/* Network Rule Switcher (only displays if differentiateNetworkRules is active) */}
+            {storeState.differentiateNetworkRules && (
+              <View style={[styles.networkSegment, {backgroundColor: theme.colors.background, marginTop: 12}]}>
+                <TouchableOpacity
+                  style={[styles.networkSegmentBtn, activeNetworkTab === 'wifi' && {backgroundColor: theme.colors.primary}]}
+                  onPress={() => setActiveNetworkTab('wifi')}
+                  activeOpacity={0.78}>
+                  <Text style={[styles.networkSegmentText, {color: activeNetworkTab === 'wifi' ? '#FFFFFF' : theme.colors.secondaryText, fontFamily: theme.fonts.bold}]}>
+                    📶 Wi-Fi Rules
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.networkSegmentBtn, activeNetworkTab === 'cellular' && {backgroundColor: theme.colors.primary}]}
+                  onPress={() => setActiveNetworkTab('cellular')}
+                  activeOpacity={0.78}>
+                  <Text style={[styles.networkSegmentText, {color: activeNetworkTab === 'cellular' ? '#FFFFFF' : theme.colors.secondaryText, fontFamily: theme.fonts.bold}]}>
+                    📶 Mobile Rules
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <Text style={[styles.modeHint, {color: theme.colors.secondaryText}]}>
+              {selectedCount} selected app{selectedCount === 1 ? '' : 's'}
+            </Text>
+          </View>
+
+          {/* Search Apps */}
+          <TextInput
+            style={[
+              styles.search,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.separator,
+                color: theme.colors.text,
+                marginBottom: 8,
+              },
+            ]}
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search apps"
+            placeholderTextColor={theme.colors.tertiaryText}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+
+          {loading && (
+            <View style={styles.centerBox}>
+              <ActivityIndicator size="large" color={theme.colors.primary} />
+              <Text style={[styles.loadingText, {color: theme.colors.secondaryText}]}>
+                Loading installed apps…
+              </Text>
+            </View>
+          )}
+
+          {error && (
+            <View
+              style={[
+                styles.errorCard,
+                {
+                  backgroundColor: theme.colors.dangerSoft,
+                  borderColor: theme.colors.danger,
+                },
+              ]}>
+              <Text style={[styles.errorText, {color: theme.colors.danger}]}>
+                {error}
+              </Text>
+            </View>
+          )}
+
+          {!loading && !error && (
+            <FlatList
+              data={filteredRules}
+              keyExtractor={item => item.packageName}
+              renderItem={renderApp}
+              contentContainerStyle={styles.listContent}
+              initialNumToRender={18}
+              maxToRenderPerBatch={18}
+              windowSize={7}
+              removeClippedSubviews
+              ListEmptyComponent={
+                <Text style={[styles.emptyText, {color: theme.colors.tertiaryText}]}>
+                  No apps found
+                </Text>
+              }
+            />
+          )}
+        </View>
+      )}
+
     </SafeAreaView>
   );
 }
@@ -325,18 +798,71 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textAlign: 'center',
   },
+  tabBar: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+    padding: 3,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 11,
+    borderBottomWidth: 3,
+    borderBottomColor: 'transparent',
+  },
+  tabText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  tabContent: {
+    flex: 1,
+  },
+  settingsContent: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    gap: 12,
+  },
+  card: {
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 16,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  cardHeaderInfo: {
+    flex: 1,
+  },
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  cardDesc: {
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 6,
+  },
   modeCard: {
     borderRadius: 16,
     marginHorizontal: 16,
-    marginVertical: 8,
+    marginVertical: 4,
     padding: 14,
     borderWidth: StyleSheet.hairlineWidth,
   },
   modeLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '800',
     textTransform: 'uppercase',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   segment: {
     flexDirection: 'row',
@@ -355,16 +881,33 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   modeHint: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     marginTop: 10,
+  },
+  networkSegment: {
+    flexDirection: 'row',
+    borderRadius: 13,
+    padding: 3,
+    gap: 4,
+  },
+  networkSegmentBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+  },
+  networkSegmentText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   search: {
     borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
     marginHorizontal: 16,
-    marginTop: 8,
-    marginBottom: 8,
+    marginTop: 6,
+    marginBottom: 6,
     paddingHorizontal: 14,
     minHeight: 44,
     fontSize: 15,
@@ -420,5 +963,84 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 40,
     fontSize: 14,
+  },
+  addDomainRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  domainInput: {
+    flex: 1,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 12,
+    minHeight: 40,
+    fontSize: 14,
+  },
+  addButton: {
+    paddingHorizontal: 16,
+    minHeight: 40,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addButtonText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 13,
+  },
+  domainTypeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10,
+  },
+  domainTypeBtn: {
+    flex: 1,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  domainTypeBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  domainsListsScroll: {
+    flex: 1,
+    marginHorizontal: 16,
+    marginTop: 10,
+  },
+  sectionHeading: {
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    marginBottom: 8,
+    marginTop: 8,
+  },
+  domainRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginVertical: 2,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  domainName: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  deleteBtn: {
+    padding: 6,
+  },
+  domainEmptyText: {
+    fontSize: 13,
+    fontStyle: 'italic',
+    paddingVertical: 4,
+    paddingLeft: 4,
   },
 });

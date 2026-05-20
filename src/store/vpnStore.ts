@@ -20,6 +20,7 @@ import type {
   PanelSettings,
 } from '../types/vpn';
 import type {ThemeMode} from '../theme/theme';
+import {DEFAULT_BYPASS_DOMAINS} from '../services/routingDefaults';
 
 // ---------------------------------------------------------------------------
 // Listener type
@@ -31,16 +32,27 @@ type Listener = () => void;
 // State shape
 // ---------------------------------------------------------------------------
 
+import type {LogEvent} from '../services/appLogger';
+
 export interface VpnStoreState {
   status: VpnStatus;
   activeProfile: VpnProfile | null;
   savedProfiles: VpnProfile[];
   splitTunnelMode: SplitTunnelMode;
   splitTunnelRules: SplitTunnelRule[];
+  splitTunnelRulesWifi: SplitTunnelRule[];
+  splitTunnelRulesCellular: SplitTunnelRule[];
+  differentiateNetworkRules: boolean;
+  adBlockEnabled: boolean;
+  bypassDomains: string[];
+  proxyDomains: string[];
+  blockedApps: string[];
+  blockAppsEnabled: boolean;
   lastError: string | null;
   lastRulesUpdate: number | null; // epoch ms
   themeMode: ThemeMode;
   panelSettings: PanelSettings | null;
+  persistedErrors: LogEvent[];
 }
 
 // ---------------------------------------------------------------------------
@@ -54,10 +66,19 @@ class VpnStore {
     savedProfiles: [],
     splitTunnelMode: 'vpn_all_except_selected',
     splitTunnelRules: [],
+    splitTunnelRulesWifi: [],
+    splitTunnelRulesCellular: [],
+    differentiateNetworkRules: false,
+    adBlockEnabled: false,
+    bypassDomains: DEFAULT_BYPASS_DOMAINS,
+    proxyDomains: [],
+    blockedApps: [],
+    blockAppsEnabled: false,
     lastError: null,
     lastRulesUpdate: null,
     themeMode: 'system',
     panelSettings: null,
+    persistedErrors: [],
   };
 
   private _listeners: Set<Listener> = new Set();
@@ -102,6 +123,38 @@ class VpnStore {
 
   get splitTunnelRules(): SplitTunnelRule[] {
     return this._state.splitTunnelRules;
+  }
+
+  get splitTunnelRulesWifi(): SplitTunnelRule[] {
+    return this._state.splitTunnelRulesWifi;
+  }
+
+  get splitTunnelRulesCellular(): SplitTunnelRule[] {
+    return this._state.splitTunnelRulesCellular;
+  }
+
+  get differentiateNetworkRules(): boolean {
+    return this._state.differentiateNetworkRules;
+  }
+
+  get adBlockEnabled(): boolean {
+    return this._state.adBlockEnabled;
+  }
+
+  get bypassDomains(): string[] {
+    return this._state.bypassDomains;
+  }
+
+  get proxyDomains(): string[] {
+    return this._state.proxyDomains;
+  }
+
+  get blockedApps(): string[] {
+    return this._state.blockedApps;
+  }
+
+  get blockAppsEnabled(): boolean {
+    return this._state.blockAppsEnabled;
   }
 
   get lastError(): string | null {
@@ -168,6 +221,16 @@ class VpnStore {
     this._notify();
   }
 
+  setSplitTunnelRulesWifi(rules: SplitTunnelRule[]): void {
+    this._state = {...this._state, splitTunnelRulesWifi: rules};
+    this._notify();
+  }
+
+  setSplitTunnelRulesCellular(rules: SplitTunnelRule[]): void {
+    this._state = {...this._state, splitTunnelRulesCellular: rules};
+    this._notify();
+  }
+
   updateSplitTunnelRule(
     packageName: string,
     update: Partial<SplitTunnelRule>,
@@ -178,6 +241,62 @@ class VpnStore {
         rule.packageName === packageName ? {...rule, ...update} : rule,
       ),
     };
+    this._notify();
+  }
+
+  updateSplitTunnelRuleWifi(
+    packageName: string,
+    update: Partial<SplitTunnelRule>,
+  ): void {
+    this._state = {
+      ...this._state,
+      splitTunnelRulesWifi: this._state.splitTunnelRulesWifi.map(rule =>
+        rule.packageName === packageName ? {...rule, ...update} : rule,
+      ),
+    };
+    this._notify();
+  }
+
+  updateSplitTunnelRuleCellular(
+    packageName: string,
+    update: Partial<SplitTunnelRule>,
+  ): void {
+    this._state = {
+      ...this._state,
+      splitTunnelRulesCellular: this._state.splitTunnelRulesCellular.map(rule =>
+        rule.packageName === packageName ? {...rule, ...update} : rule,
+      ),
+    };
+    this._notify();
+  }
+
+  setDifferentiateNetworkRules(enabled: boolean): void {
+    this._state = {...this._state, differentiateNetworkRules: enabled};
+    this._notify();
+  }
+
+  setAdBlockEnabled(enabled: boolean): void {
+    this._state = {...this._state, adBlockEnabled: enabled};
+    this._notify();
+  }
+
+  setBypassDomains(domains: string[]): void {
+    this._state = {...this._state, bypassDomains: domains};
+    this._notify();
+  }
+
+  setProxyDomains(domains: string[]): void {
+    this._state = {...this._state, proxyDomains: domains};
+    this._notify();
+  }
+
+  setBlockedApps(apps: string[]): void {
+    this._state = {...this._state, blockedApps: apps};
+    this._notify();
+  }
+
+  setBlockAppsEnabled(enabled: boolean): void {
+    this._state = {...this._state, blockAppsEnabled: enabled};
     this._notify();
   }
 
@@ -196,6 +315,15 @@ class VpnStore {
     this._notify();
   }
 
+  addPersistedError(error: LogEvent): void {
+    const exists = this._state.persistedErrors.some(e => e.id === error.id);
+    if (!exists) {
+      const nextErrors = [error, ...this._state.persistedErrors].slice(0, 15);
+      this._state = {...this._state, persistedErrors: nextErrors};
+      this._notify();
+    }
+  }
+
   hydrateFromPersistedState(state: PersistedVpnState): void {
     const activeProfile =
       state.savedProfiles.find(profile => profile.id === state.activeProfileId) ??
@@ -206,11 +334,24 @@ class VpnStore {
       savedProfiles: state.savedProfiles,
       splitTunnelMode: state.splitTunnelMode,
       splitTunnelRules: state.splitTunnelRules,
+      splitTunnelRulesWifi: state.splitTunnelRulesWifi || [],
+      splitTunnelRulesCellular: state.splitTunnelRulesCellular || [],
+      differentiateNetworkRules: state.differentiateNetworkRules ?? false,
+      adBlockEnabled: state.adBlockEnabled ?? false,
+      bypassDomains: state.bypassDomains || DEFAULT_BYPASS_DOMAINS,
+      proxyDomains: state.proxyDomains || [],
+      blockedApps: state.blockedApps || [],
+      blockAppsEnabled: state.blockAppsEnabled ?? false,
       lastRulesUpdate: state.lastRulesUpdate,
       themeMode: state.themeMode,
       panelSettings: state.panelSettings,
+      persistedErrors: state.persistedErrors || [],
     };
     this._notify();
+
+    // Load persisted errors back into logger
+    const {loadPersistedErrors} = require('../services/appLogger');
+    loadPersistedErrors(state.persistedErrors || []);
   }
 
   toPersistedState(): PersistedVpnState {
@@ -219,9 +360,18 @@ class VpnStore {
       activeProfileId: this._state.activeProfile?.id ?? null,
       splitTunnelMode: this._state.splitTunnelMode,
       splitTunnelRules: this._state.splitTunnelRules,
+      splitTunnelRulesWifi: this._state.splitTunnelRulesWifi,
+      splitTunnelRulesCellular: this._state.splitTunnelRulesCellular,
+      differentiateNetworkRules: this._state.differentiateNetworkRules,
+      adBlockEnabled: this._state.adBlockEnabled,
+      bypassDomains: this._state.bypassDomains,
+      proxyDomains: this._state.proxyDomains,
+      blockedApps: this._state.blockedApps,
+      blockAppsEnabled: this._state.blockAppsEnabled,
       lastRulesUpdate: this._state.lastRulesUpdate,
       themeMode: this._state.themeMode,
       panelSettings: this._state.panelSettings,
+      persistedErrors: this._state.persistedErrors,
     };
   }
 }
@@ -231,6 +381,9 @@ class VpnStore {
 // ---------------------------------------------------------------------------
 
 export const vpnStore = new VpnStore();
+
+const {setStoreRef} = require('../services/appLogger');
+setStoreRef(vpnStore);
 
 // ---------------------------------------------------------------------------
 // React hook helper

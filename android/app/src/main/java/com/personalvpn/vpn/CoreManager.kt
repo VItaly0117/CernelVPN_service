@@ -487,6 +487,15 @@ class CoreManager(private val service: PersonalVpnService) :
             TAG,
             "Default interface for libbox: $interfaceName mtu=$mtu wifi=$isWifi cellular=$isCellular"
         )
+
+        // Samsung Handover Fix: Update the VpnService's underlying networks dynamically
+        val underlying = findUnderlyingNetworks()
+        if (underlying.isNotEmpty()) {
+            runCatching {
+                service.setUnderlyingNetworks(underlying.toTypedArray())
+                Log.d(TAG, "Successfully updated underlying networks dynamically: size=${underlying.size}")
+            }.onFailure { Log.w(TAG, "Failed to dynamically set underlying networks on VpnService", it) }
+        }
     }
 
     private fun NetworkCapabilities.isUsableUnderlyingNetwork(): Boolean {
