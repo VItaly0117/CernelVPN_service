@@ -1,3 +1,6 @@
+import type {AppStateStatus} from 'react-native';
+import type {VpnStatus} from '../types/vpn';
+
 export interface NativeTrafficStatsSnapshot {
   rxBytes: number;
   txBytes: number;
@@ -50,6 +53,13 @@ export function buildTrafficBars(rates: TrafficRates): number[] {
     const ripple = 0.82 + Math.sin(index * 1.45 + combined / 12) * 0.12;
     return clampBarHeight(3 + normalized * 49 * wave * ripple);
   });
+}
+
+export function shouldPollTraffic(
+  status: VpnStatus,
+  appState: AppStateStatus,
+): boolean {
+  return status === 'connected' && appState === 'active';
 }
 
 function roundRate(value: number): number {

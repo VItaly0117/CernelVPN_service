@@ -1,5 +1,13 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
-import {StyleSheet, View, Text, Animated, Easing} from 'react-native';
+import {
+  StyleSheet,
+  View,
+  Text,
+  Animated,
+  Easing,
+  AppState,
+  type AppStateStatus,
+} from 'react-native';
 import type {VpnStatus} from '../types/vpn';
 import type {AppTheme} from '../theme/theme';
 import {getTrafficStats} from '../native/NativeVpn';
@@ -7,6 +15,7 @@ import {
   buildTrafficBars,
   calculateTrafficRates,
   formatMbps,
+  shouldPollTraffic,
   type NativeTrafficStatsSnapshot,
   type TrafficRates,
 } from '../services/trafficStatsService';
@@ -19,6 +28,7 @@ interface TrafficGraphProps {
 export const TrafficGraph: React.FC<TrafficGraphProps> = ({status, theme}) => {
   const isConnected = status === 'connected';
   const isConnecting = status === 'connecting';
+  const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
 
   const [rates, setRates] = useState<TrafficRates>({
     downloadMbps: 0,
@@ -57,6 +67,11 @@ export const TrafficGraph: React.FC<TrafficGraphProps> = ({status, theme}) => {
   }, [barHeights, stopAnimations]);
 
   useEffect(() => {
+    const subscription = AppState.addEventListener('change', setAppState);
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
     const clearPoll = () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -64,7 +79,7 @@ export const TrafficGraph: React.FC<TrafficGraphProps> = ({status, theme}) => {
       }
     };
 
-    if (isConnected) {
+    if (shouldPollTraffic(status, appState)) {
       clearPoll();
 
       const pollTraffic = async () => {
@@ -88,7 +103,7 @@ export const TrafficGraph: React.FC<TrafficGraphProps> = ({status, theme}) => {
 
       pollTraffic();
       intervalRef.current = setInterval(pollTraffic, 1000);
-    } else if (isConnecting) {
+    } else if (isConnecting && appState === 'active') {
       clearPoll();
       previousStats.current = null;
       setRates({downloadMbps: 0, uploadMbps: 0});
@@ -134,7 +149,14 @@ export const TrafficGraph: React.FC<TrafficGraphProps> = ({status, theme}) => {
       clearPoll();
       stopAnimations();
     };
-  }, [isConnected, isConnecting, barHeights, animateBars, stopAnimations]);
+  }, [
+    status,
+    appState,
+    isConnecting,
+    barHeights,
+    animateBars,
+    stopAnimations,
+  ]);
 
   const downloadSpeed = isConnecting ? '---' : formatMbps(rates.downloadMbps);
   const uploadSpeed = isConnecting ? '---' : formatMbps(rates.uploadMbps);
