@@ -4,6 +4,11 @@ import android.app.Activity
 import android.content.Intent
 import android.net.VpnService
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
+import android.net.Network
+import android.net.TrafficStats
 import android.provider.Settings
 import android.util.Log
 import androidx.core.content.ContextCompat
@@ -32,6 +37,7 @@ class VpnBridgeModule(reactContext: ReactApplicationContext) :
     }
 
     private var vpnPermissionPromise: Promise? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     init {
         reactContext.addActivityEventListener(this)
@@ -43,6 +49,8 @@ class VpnBridgeModule(reactContext: ReactApplicationContext) :
         PersonalVpnService.errorListener = { code, message ->
             emitError(code, message)
         }
+
+        registerNetworkCallback()
     }
 
     override fun getName(): String = MODULE_NAME
@@ -306,6 +314,114 @@ class VpnBridgeModule(reactContext: ReactApplicationContext) :
                 .emit(EVENT_ERROR, errorMap)
         } catch (e: Exception) {
             Log.w(TAG, "Failed to emit error event", e)
+        }
+    }
+
+    @ReactMethod
+    fun getNetworkType(promise: Promise) {
+        try {
+            val connectivityManager = reactApplicationContext.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val activeNetwork = connectivityManager.activeNetwork
+            val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork)
+            if (capabilities == null) {
+                promise.resolve("none")
+                return
+            }
+            when {
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> promise.resolve("wifi")
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> promise.resolve("cellular")
+                else -> promise.resolve("other")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting network type", e)
+            promise.reject("NETWORK_TYPE_ERROR", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun getTrafficStats(promise: Promise) {
+        try {
+            val rxBytes = TrafficStats.getTotalRxBytes().takeIf { it >= 0 } ?: 0L
+            val txBytes = TrafficStats.getTotalTxBytes().takeIf { it >= 0 } ?: 0L
+            val result = Arguments.createMap().apply {
+                putDouble("rxBytes", rxBytes.toDouble())
+                putDouble("txBytes", txBytes.toDouble())
+                putDouble("timestampMs", System.currentTimeMillis().toDouble())
+            }
+            promise.resolve(result)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting traffic stats", e)
+            promise.reject("TRAFFIC_STATS_ERROR", e.message, e)
+        }
+    }
+
+    override fun invalidate() {
+        super.invalidate()
+        try {
+            networkCallback?.let {
+                val connectivityManager = reactApplicationContext.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+                connectivityManager.unregisterNetworkCallback(it)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error unregistering network callback", e)
+        }
+    }
+
+    private fun registerNetworkCallback() {
+        try {
+            val connectivityManager = reactApplicationContext.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build()
+
+            networkCallback = object : ConnectivityManager.NetworkCallback() {
+                private var lastNetworkType: String? = null
+
+                override fun onCapabilitiesChanged(
+                    network: Network,
+                    networkCapabilities: NetworkCapabilities
+                ) {
+                    val currentType = when {
+                        networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "wifi"
+                        networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "cellular"
+                        else -> "other"
+                    }
+
+                    if (currentType != lastNetworkType) {
+                        lastNetworkType = currentType
+                        emitNetworkTypeChanged(currentType)
+                    }
+                }
+
+                override fun onLost(network: Network) {
+                    val activeNet = connectivityManager.activeNetwork
+                    val caps = connectivityManager.getNetworkCapabilities(activeNet)
+                    val currentType = when {
+                        caps == null -> "none"
+                        caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "wifi"
+                        caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "cellular"
+                        else -> "other"
+                    }
+                    if (currentType != lastNetworkType) {
+                        lastNetworkType = currentType
+                        emitNetworkTypeChanged(currentType)
+                    }
+                }
+            }
+
+            connectivityManager.registerNetworkCallback(request, networkCallback!!)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error registering network callback", e)
+        }
+    }
+
+    private fun emitNetworkTypeChanged(networkType: String) {
+        try {
+            reactApplicationContext
+                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                .emit("NetworkTypeChanged", networkType)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to emit network type event", e)
         }
     }
 

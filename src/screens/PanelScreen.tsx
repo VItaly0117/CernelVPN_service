@@ -27,6 +27,7 @@ import {
   type PanelServerStatus,
 } from '../services/xuiPanelService';
 import {androidHeaderTopPadding} from '../services/layoutService';
+import {appLogger} from '../services/appLogger';
 
 interface Props {
   onBack: () => void;
@@ -61,10 +62,21 @@ export function PanelScreen({onBack}: Props): React.JSX.Element {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadingAction, setLoadingAction] = useState<LoadingAction>(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [panelErrorDetails, setPanelErrorDetails] = useState<{
+    message: string;
+    suggestion?: string;
+    status?: number;
+    url?: string;
+  } | null>(null);
 
   const buildSettings = useCallback((): PanelSettings => {
+    let url = panelUrl.trim();
+    if (url && !url.endsWith('/')) {
+      url = `${url}/`;
+    }
     const settings: PanelSettings = {
-      panelUrl: panelUrl.trim(),
+      panelUrl: url,
       username: username.trim() || undefined,
       password: password || undefined,
       sessionCookie: sessionCookie.trim() || undefined,
@@ -88,10 +100,27 @@ export function PanelScreen({onBack}: Props): React.JSX.Element {
       setLoadingAction(action);
       setError(null);
       setMessage(null);
+      setPanelErrorDetails(null);
+      appLogger.info('xui-panel', `Running remote action: ${action}`);
       try {
         await task();
+        appLogger.info('xui-panel', `Action '${action}' completed successfully`);
       } catch (err: unknown) {
-        setError(errorMessage(err));
+        appLogger.error('xui-panel', `Action '${action}' failed: ${errorMessage(err)}`, {
+          raw: err instanceof Error ? err.stack : String(err),
+        });
+        if (err && typeof err === 'object' && 'name' in err && err.name === 'PanelError') {
+          const pe = err as any;
+          setPanelErrorDetails({
+            message: pe.message || 'Panel auth failed',
+            suggestion: pe.suggestion,
+            status: pe.status,
+            url: pe.url,
+          });
+          setError(pe.message || 'Panel auth failed');
+        } else {
+          setError(errorMessage(err));
+        }
       } finally {
         setLoadingAction(null);
       }
@@ -171,7 +200,10 @@ export function PanelScreen({onBack}: Props): React.JSX.Element {
       });
 
       if (profiles.length === 0) {
-        Alert.alert('No VLESS Profiles', 'No enabled VLESS clients were found.');
+        Alert.alert(
+          'No VLESS Profiles',
+          'No compatible clients found. Make sure you have active VLESS inbounds on the panel.',
+        );
         return;
       }
 
@@ -294,6 +326,17 @@ export function PanelScreen({onBack}: Props): React.JSX.Element {
               autoCapitalize="none"
               keyboardType="url"
             />
+            {panelUrl.trim().length > 0 && !/^[a-z][a-z\d+.-]*:\/\//i.test(panelUrl) && (
+              <TouchableOpacity
+                style={[styles.suggestionPill, {backgroundColor: theme.colors.primarySoft}]}
+                onPress={() => setPanelUrl(`http://${panelUrl.trim()}`)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.suggestionPillText, {color: theme.colors.primary}]}>
+                  Prepend protocol: http://
+                </Text>
+              </TouchableOpacity>
+            )}
             <InputField
               theme={theme}
               label="Username"
@@ -310,14 +353,28 @@ export function PanelScreen({onBack}: Props): React.JSX.Element {
               placeholder="Password"
               secureTextEntry
             />
-            <InputField
-              theme={theme}
-              label="Session cookie"
-              value={sessionCookie}
-              onChangeText={setSessionCookie}
-              placeholder="session=..."
-              autoCapitalize="none"
-            />
+
+            <TouchableOpacity
+              style={styles.advancedToggle}
+              activeOpacity={0.8}
+              onPress={() => setShowAdvanced(!showAdvanced)}
+            >
+              <Text style={[styles.advancedToggleText, {color: theme.colors.primary}]}>
+                {showAdvanced ? 'Hide Advanced Settings' : 'Show Advanced Settings'}
+              </Text>
+            </TouchableOpacity>
+
+            {showAdvanced && (
+              <InputField
+                theme={theme}
+                label="Session cookie"
+                value={sessionCookie}
+                onChangeText={setSessionCookie}
+                placeholder="session=..."
+                autoCapitalize="none"
+              />
+            )}
+
             <View style={styles.buttonRow}>
               <PanelButton
                 theme={theme}
@@ -336,23 +393,54 @@ export function PanelScreen({onBack}: Props): React.JSX.Element {
             </View>
           </View>
 
-          {(message || error) && (
+          {error && (
             <View
               style={[
                 styles.messageCard,
                 {
-                  backgroundColor: error
-                    ? theme.colors.dangerSoft
-                    : theme.colors.successSoft,
-                  borderColor: error ? theme.colors.danger : theme.colors.success,
+                  backgroundColor: theme.colors.dangerSoft,
+                  borderColor: theme.colors.danger,
                 },
               ]}>
               <Text
                 style={[
                   styles.messageText,
-                  {color: error ? theme.colors.danger : theme.colors.success},
+                  {color: theme.colors.danger, fontWeight: '800'},
                 ]}>
-                {error ?? message}
+                Panel auth failed
+              </Text>
+              <Text
+                style={[
+                  styles.messageDetailText,
+                  {color: theme.colors.secondaryText, marginTop: 4, fontSize: 13, lineHeight: 18},
+                ]}>
+                {error}
+              </Text>
+              {panelErrorDetails?.suggestion && (
+                <View style={[styles.suggestionBox, {borderColor: theme.colors.separator}]}>
+                  <Text style={[styles.suggestionTitle, {color: theme.colors.danger}]}>💡 Suggestion:</Text>
+                  <Text style={[styles.suggestionText, {color: theme.colors.text}]}>
+                    {panelErrorDetails.suggestion}
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+          {message && !error && (
+            <View
+              style={[
+                styles.messageCard,
+                {
+                  backgroundColor: theme.colors.successSoft,
+                  borderColor: theme.colors.success,
+                },
+              ]}>
+              <Text
+                style={[
+                  styles.messageText,
+                  {color: theme.colors.success},
+                ]}>
+                {message}
               </Text>
             </View>
           )}
@@ -784,5 +872,44 @@ const styles = StyleSheet.create({
   statusValue: {
     fontSize: 13,
     fontWeight: '800',
+  },
+  advancedToggle: {
+    paddingVertical: 8,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  advancedToggleText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  suggestionPill: {
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+  },
+  suggestionPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  suggestionBox: {
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  suggestionTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    marginBottom: 2,
+  },
+  suggestionText: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600',
+  },
+  messageDetailText: {
+    fontSize: 13,
+    lineHeight: 18,
   },
 });

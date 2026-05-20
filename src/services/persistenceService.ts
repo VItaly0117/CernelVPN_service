@@ -1,3 +1,4 @@
+import {appLogger} from './appLogger';
 import * as NativeVpn from '../native/NativeVpn';
 import {vpnStore} from '../store/vpnStore';
 import {parsePersistedVpnState, serializeVpnState} from './statePersistence';
@@ -7,10 +8,18 @@ let unsubscribe: (() => void) | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
 export async function hydrateVpnStore(): Promise<void> {
-  const raw = await NativeVpn.loadPersistedState();
-  const persisted = parsePersistedVpnState(raw);
-  if (persisted) {
-    vpnStore.hydrateFromPersistedState(persisted);
+  try {
+    const raw = await NativeVpn.loadPersistedState();
+    const persisted = parsePersistedVpnState(raw);
+    if (persisted) {
+      vpnStore.hydrateFromPersistedState(persisted);
+      appLogger.info('persistence', 'Successfully hydrated VPN store from native storage');
+    } else {
+      appLogger.info('persistence', 'No persisted VPN state found, using defaults');
+    }
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown hydration error';
+    appLogger.error('persistence', `Failed to hydrate VPN store: ${msg}`);
   }
 }
 
@@ -27,7 +36,7 @@ export function startPersistingVpnStore(): () => void {
     saveTimer = setTimeout(() => {
       const raw = serializeVpnState(vpnStore.toPersistedState());
       NativeVpn.savePersistedState(raw).catch(error => {
-        console.warn('[Persistence] Failed to save state', error);
+        appLogger.warn('persistence', `Failed to save persisted state: ${error.message}`);
       });
     }, 150);
   });

@@ -25,7 +25,9 @@ export function ActionRow({
       style={[
         styles.row,
         {
-          backgroundColor: theme.colors.surface,
+          backgroundColor: theme.isDark
+            ? 'rgba(255,255,255,0.03)'
+            : theme.colors.surface,
           borderColor: theme.colors.separator,
         },
       ]}
@@ -44,11 +46,19 @@ export function ActionRow({
           </View>
         )}
         <View style={styles.textContainer}>
-          <Text style={[styles.label, {color: theme.colors.text}]}>
+          <Text
+            style={[
+              styles.label,
+              {color: theme.colors.text, fontFamily: theme.fonts.semiBold},
+            ]}>
             {label}
           </Text>
           {subtitle && (
-            <Text style={[styles.subtitle, {color: theme.colors.tertiaryText}]}>
+            <Text
+              style={[
+                styles.subtitle,
+                {color: theme.colors.tertiaryText, fontFamily: theme.fonts.regular},
+              ]}>
               {subtitle}
             </Text>
           )}

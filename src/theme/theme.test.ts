@@ -8,13 +8,32 @@ describe('theme', () => {
     expect(resolveThemeMode('dark', 'light')).toBe('dark');
   });
 
-  it('uses a light Apple-like default palette', () => {
+  it('uses the clean light palette', () => {
     const theme = getTheme('light');
 
-    expect(theme.colors.background).toBe('#F5F6F8');
+    expect(theme.colors.background).toBe('#F8F9FB');
     expect(theme.colors.surface).toBe('#FFFFFF');
-    expect(theme.colors.primary).toBe('#007AFF');
+    expect(theme.colors.primary).toBe('#7C3AED');
+    expect(theme.colors.secondary).toBe('#C084FC');
+    expect(theme.colors.accentGlow).toBe('rgba(124, 58, 237, 0.08)');
     expect(theme.radius.md).toBe(12);
+  });
+
+  it('uses the cyber dark palette', () => {
+    const theme = getTheme('dark');
+
+    expect(theme.colors.background).toBe('#050507');
+    expect(theme.colors.primary).toBe('#8B5CF6');
+    expect(theme.colors.secondary).toBe('#D946EF');
+    expect(theme.colors.accentGlow).toBe('rgba(139, 92, 246, 0.15)');
+  });
+
+  it('includes Inter font family references', () => {
+    const theme = getTheme('light');
+
+    expect(theme.fonts.regular).toBe('Inter-Regular');
+    expect(theme.fonts.bold).toBe('Inter-Bold');
+    expect(theme.fonts.mono).toBe('monospace');
   });
 
   it('maps status colors to semantic accents', () => {

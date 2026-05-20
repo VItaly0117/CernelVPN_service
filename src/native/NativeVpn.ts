@@ -10,6 +10,7 @@ import type {
   VpnDiagnosticResult,
   InstalledAppInfo,
 } from '../types/vpn';
+import type {NativeTrafficStatsSnapshot} from '../services/trafficStatsService';
 
 // ---------------------------------------------------------------------------
 // Module reference
@@ -120,6 +121,27 @@ export async function getInstalledApps(): Promise<InstalledAppInfo[]> {
   return VpnBridgeModule.getInstalledApps();
 }
 
+/**
+ * Get the current active network type: 'wifi', 'cellular', 'other', or 'none'.
+ */
+export async function getNetworkType(): Promise<'wifi' | 'cellular' | 'other' | 'none'> {
+  if (!VpnBridgeModule) {
+    return 'none';
+  }
+  return VpnBridgeModule.getNetworkType();
+}
+
+/**
+ * Get device-level Android TrafficStats counters since boot.
+ * JS computes deltas to render real-time dashboard speeds.
+ */
+export async function getTrafficStats(): Promise<NativeTrafficStatsSnapshot> {
+  if (!VpnBridgeModule) {
+    return {rxBytes: 0, txBytes: 0, timestampMs: Date.now()};
+  }
+  return VpnBridgeModule.getTrafficStats();
+}
+
 // ---------------------------------------------------------------------------
 // Event listeners
 // ---------------------------------------------------------------------------
@@ -150,5 +172,20 @@ export function onVpnError(listener: VpnErrorListener): () => void {
     return () => {};
   }
   const subscription = vpnEmitter.addListener('VpnError', listener);
+  return () => subscription.remove();
+}
+
+export type NetworkTypeListener = (networkType: 'wifi' | 'cellular' | 'other' | 'none') => void;
+
+/**
+ * Subscribe to active network type switches from the native layer.
+ * Returns an unsubscribe function.
+ */
+export function onNetworkTypeChanged(listener: NetworkTypeListener): () => void {
+  if (!vpnEmitter) {
+    console.warn('[NativeVpn] Event emitter not available');
+    return () => {};
+  }
+  const subscription = vpnEmitter.addListener('NetworkTypeChanged', listener);
   return () => subscription.remove();
 }

@@ -14,12 +14,14 @@ import {
   KeyboardAvoidingView,
   Platform,
   StatusBar as NativeStatusBar,
+  Keyboard,
 } from 'react-native';
 import {parseProfileLink, isProfileValid} from '../services/profileParser';
 import {vpnStore, useVpnStore} from '../store/vpnStore';
 import type {VpnProfile} from '../types/vpn';
 import {useResolvedTheme, type AppTheme} from '../theme/theme';
 import {androidHeaderTopPadding} from '../services/layoutService';
+import {appLogger} from '../services/appLogger';
 
 interface Props {
   onBack: () => void;
@@ -39,14 +41,19 @@ export function ImportProfileScreen({onBack}: Props): React.JSX.Element {
   const [parseError, setParseError] = useState<string | null>(null);
 
   const handleParse = useCallback(() => {
+    Keyboard.dismiss();
     setParseError(null);
     setParsedProfile(null);
+    appLogger.info('profile-import', 'Initiating manual profile paste parse');
 
     const result = parseProfileLink(linkText);
     if (result.success && result.profile) {
       setParsedProfile(result.profile);
+      appLogger.info('profile-import', `Profile parsed successfully: protocol=${result.profile.protocol}, host=${result.profile.host}`);
     } else {
-      setParseError(result.error || 'Unknown parsing error');
+      const errStr = result.error || 'Unknown parsing error';
+      setParseError(errStr);
+      appLogger.error('profile-import', `Profile parsing failed: ${errStr}`);
     }
   }, [linkText]);
 
@@ -54,12 +61,15 @@ export function ImportProfileScreen({onBack}: Props): React.JSX.Element {
     if (!parsedProfile) {return;}
 
     if (!isProfileValid(parsedProfile)) {
-      Alert.alert('Invalid Profile', 'Profile is missing required fields.');
+      const errStr = 'Profile is missing required fields.';
+      Alert.alert('Invalid Profile', errStr);
+      appLogger.error('profile-import', `Profile save failed: ${errStr}`);
       return;
     }
 
     vpnStore.addProfile(parsedProfile);
     vpnStore.setActiveProfile(parsedProfile);
+    appLogger.info('profile-import', `Profile saved and activated: Name=${parsedProfile.name}`);
 
     Alert.alert(
       'Profile Saved',
@@ -167,53 +177,9 @@ export function ImportProfileScreen({onBack}: Props): React.JSX.Element {
               />
               <ProfileField
                 theme={theme}
-                label="Host"
+                label="Server"
                 value={`${parsedProfile.host}:${parsedProfile.port}`}
               />
-              {parsedProfile.uuid && (
-                <ProfileField theme={theme} label="UUID" value={parsedProfile.uuid} />
-              )}
-              {parsedProfile.method && (
-                <ProfileField
-                  theme={theme}
-                  label="Method"
-                  value={parsedProfile.method}
-                />
-              )}
-              {parsedProfile.security && (
-                <ProfileField
-                  theme={theme}
-                  label="Security"
-                  value={parsedProfile.security}
-                />
-              )}
-              {parsedProfile.sni && (
-                <ProfileField theme={theme} label="SNI" value={parsedProfile.sni} />
-              )}
-              {parsedProfile.publicKey && (
-                <ProfileField
-                  theme={theme}
-                  label="Public Key"
-                  value={parsedProfile.publicKey}
-                />
-              )}
-              {parsedProfile.shortId && (
-                <ProfileField
-                  theme={theme}
-                  label="Short ID"
-                  value={parsedProfile.shortId}
-                />
-              )}
-              {parsedProfile.flow && (
-                <ProfileField theme={theme} label="Flow" value={parsedProfile.flow} />
-              )}
-              {parsedProfile.transport && (
-                <ProfileField
-                  theme={theme}
-                  label="Transport"
-                  value={parsedProfile.transport}
-                />
-              )}
 
               <TouchableOpacity
                 style={[

@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.net.VpnService
 import android.os.Build
 import android.os.Handler
@@ -104,10 +105,19 @@ class PersonalVpnService : VpnService() {
                 return START_NOT_STICKY
             }
             else -> {
+                val rawPayload = intent?.getStringExtra(EXTRA_START_PAYLOAD_JSON)
+                if (!rawPayload.isNullOrBlank()) {
+                    runCatching {
+                        val prefs = getSharedPreferences("kernelvpn_state", MODE_PRIVATE)
+                        prefs.edit().putString("last_start_payload", rawPayload).apply()
+                        Log.i(TAG, "Saved last start payload to SharedPreferences")
+                    }.onFailure { e ->
+                        Log.e(TAG, "Failed to save last start payload", e)
+                    }
+                }
+
                 // Start or restart VPN
-                val startConfig = parseStartConfig(
-                    intent?.getStringExtra(EXTRA_START_PAYLOAD_JSON)
-                )
+                val startConfig = parseStartConfig(rawPayload)
                 currentSplitTunnelMode = startConfig.splitTunnelMode
                 currentSplitTunnelRuleCount = startConfig.splitTunnelRules.count { it.enabled }
                 currentActiveProfileName = startConfig.profileName
@@ -115,7 +125,15 @@ class PersonalVpnService : VpnService() {
                 lastConnectionError = null
 
                 // Start foreground immediately (Android 8+ requirement)
-                startForeground(NOTIFICATION_ID, buildNotification("Connecting…"))
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    startForeground(
+                        NOTIFICATION_ID,
+                        buildNotification("Connecting…"),
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                    )
+                } else {
+                    startForeground(NOTIFICATION_ID, buildNotification("Connecting…"))
+                }
                 acquireWakeLock()
 
                 updateStatus(VpnStatus.CONNECTING)
@@ -129,13 +147,13 @@ class PersonalVpnService : VpnService() {
     }
 
     override fun onDestroy() {
-        Log.i(TAG, "onDestroy")
+        Log.i(TAG, "onDestroy (manufacturer=${Build.MANUFACTURER}, model=${Build.MODEL}, isRunning=$isServiceRunning)")
         stopVpnTunnel(stopSelfAfter = false)
         super.onDestroy()
     }
 
     override fun onRevoke() {
-        Log.i(TAG, "onRevoke — VPN permission revoked by user/system")
+        Log.i(TAG, "onRevoke — VPN permission revoked by user/system (manufacturer=${Build.MANUFACTURER}, model=${Build.MODEL})")
         stopVpnTunnel()
         super.onRevoke()
     }
@@ -261,6 +279,18 @@ class PersonalVpnService : VpnService() {
         currentStatus = status
         statusListener?.invoke(status)
         Log.d(TAG, "Status updated: ${status.value}")
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            runCatching {
+                android.service.quicksettings.TileService.requestListeningState(
+                    this,
+                    android.content.ComponentName(this, VpnTileService::class.java)
+                )
+                Log.d(TAG, "Requested tile listening state update")
+            }.onFailure { e ->
+                Log.w(TAG, "Failed to request tile listening state update", e)
+            }
+        }
     }
 
     private fun failConnection(code: String, message: String) {
@@ -287,7 +317,7 @@ class PersonalVpnService : VpnService() {
                 ?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "KernelVPN:VpnWakeLock")
                 ?.apply {
                     setReferenceCounted(false)
-                    acquire()
+                    acquire(4 * 60 * 60 * 1000L)  // 4-hour timeout — prevents OxygenOS killing for indefinite WakeLock
                 }
             isWakeLockHeld = wakeLock?.isHeld == true
             Log.i(TAG, "VPN wake lock held=$isWakeLockHeld")

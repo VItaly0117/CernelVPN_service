@@ -87,11 +87,15 @@ describe('singBoxConfig', () => {
     expect(config.dns.strategy).toBe('prefer_ipv4');
     expect(config.dns.servers).toEqual([
       {
+        tag: 'google-doh',
+        address: 'https://8.8.8.8/dns-query',
+        detour: 'proxy',
+      },
+      {
         tag: 'cloudflare-doh',
         address: 'https://1.1.1.1/dns-query',
-        detour: 'direct',
+        detour: 'proxy',
       },
-      {tag: 'cloudflare-tcp', address: 'tcp://1.0.0.1', detour: 'direct'},
     ]);
     expect(config.outbounds).toContainEqual({type: 'dns', tag: 'dns-out'});
     expect(config.route.rules).toContainEqual({
