@@ -16,6 +16,9 @@ describe('diagnosticReport', () => {
     selectedProtocol: 'vless',
     splitTunnelMode: 'vpn_all_except_selected',
     splitTunnelRuleCount: 5,
+    underlyingNetworkCount: 1,
+    defaultInterfaceName: 'wlan0',
+    defaultNetworkTransport: 'wifi',
     lastError: 'Broken pipe in native tunnel execution',
     timestamp: 1716120000000, // May 19 2026
     androidVersion: 'Android 14 (API 34)',
@@ -37,6 +40,7 @@ describe('diagnosticReport', () => {
     // Assert App & Device properties
     expect(report).toContain('Android: Android 14 (API 34)');
     expect(report).toContain('VPN state: Permission: Granted · Service: Running · Native Core: Active');
+    expect(report).toContain('Underlying: 1 network(s) · wlan0 · wifi');
 
     // Assert sensitive fields are sanitized
     // 'vless-confidential-node' has no explicit secrets but we sanitize names to be extra safe

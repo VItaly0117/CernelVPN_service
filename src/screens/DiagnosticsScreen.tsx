@@ -208,7 +208,13 @@ export function DiagnosticsScreen({onBack}: Props): React.JSX.Element {
 
   // Grouped status elements
   const appSection = getSectionItems(['Device', 'Core Integrated', 'Snapshot Time']);
-  const vpnSection = getSectionItems(['VPN Permission', 'VPN Service', 'VPN Core', 'Wake Lock']);
+  const vpnSection = getSectionItems([
+    'VPN Permission',
+    'VPN Service',
+    'VPN Core',
+    'Wake Lock',
+    'Underlying Networks',
+  ]);
   const connectionSection = getSectionItems(['Active Profile', 'Protocol', 'Last Error', 'Last Core Error', 'Last Connection Error']);
   const splitSection = getSectionItems(['Split Tunnel']);
   const panelSection = getSectionItems(['3X-UI Panel', 'Panel Xray', 'Panel Server']);

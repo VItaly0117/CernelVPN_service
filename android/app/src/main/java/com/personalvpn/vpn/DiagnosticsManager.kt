@@ -25,6 +25,10 @@ class DiagnosticsManager(private val context: Context) {
         val deviceModel: String,
         val androidVersion: String,
         val wakeLockHeld: Boolean,
+        val underlyingNetworkCount: Int,
+        val defaultInterfaceName: String?,
+        val defaultNetworkTransport: String?,
+        val underlyingNetworkError: String?,
         val splitTunnelMode: String,
         val splitTunnelRuleCount: Int,
         val lastError: String?,
@@ -45,6 +49,14 @@ class DiagnosticsManager(private val context: Context) {
         val coreIntegrated = PersonalVpnService.coreManager?.isCoreIntegrated()
             ?: CoreManager.isLibboxAvailable()
         val coreRunning = PersonalVpnService.coreManager?.isRunning() ?: false
+        val underlyingNetworkCount =
+            PersonalVpnService.coreManager?.getLastUnderlyingNetworkCount() ?: 0
+        val defaultInterfaceName =
+            PersonalVpnService.coreManager?.getLastDefaultInterfaceName()
+        val defaultNetworkTransport =
+            PersonalVpnService.coreManager?.getLastDefaultNetworkTransport()
+        val underlyingNetworkError =
+            PersonalVpnService.coreManager?.getLastUnderlyingNetworkError()
         val activeProfileName = PersonalVpnService.currentActiveProfileName
         val selectedProtocol = PersonalVpnService.currentSelectedProtocol
         val wakeLockHeld = PersonalVpnService.isWakeLockHeld
@@ -65,6 +77,10 @@ class DiagnosticsManager(private val context: Context) {
             deviceModel = Build.MODEL ?: "unknown",
             androidVersion = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})",
             wakeLockHeld = wakeLockHeld,
+            underlyingNetworkCount = underlyingNetworkCount,
+            defaultInterfaceName = defaultInterfaceName,
+            defaultNetworkTransport = defaultNetworkTransport,
+            underlyingNetworkError = underlyingNetworkError,
             splitTunnelMode = splitTunnelMode,
             splitTunnelRuleCount = splitTunnelRuleCount,
             lastError = lastError,

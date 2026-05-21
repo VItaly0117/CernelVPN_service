@@ -104,6 +104,18 @@ class CoreManager(private val service: PersonalVpnService) :
     @Volatile
     private var defaultNetworkCallback: ConnectivityManager.NetworkCallback? = null
 
+    @Volatile
+    private var lastUnderlyingNetworkCount = 0
+
+    @Volatile
+    private var lastDefaultInterfaceName: String? = null
+
+    @Volatile
+    private var lastDefaultNetworkTransport: String? = null
+
+    @Volatile
+    private var lastUnderlyingNetworkError: String? = null
+
     private val connectivityManager: ConnectivityManager by lazy {
         service.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     }
@@ -165,6 +177,14 @@ class CoreManager(private val service: PersonalVpnService) :
     fun isRunning(): Boolean = running
 
     fun getLastError(): String? = lastError ?: libboxSetupError
+
+    fun getLastUnderlyingNetworkCount(): Int = lastUnderlyingNetworkCount
+
+    fun getLastDefaultInterfaceName(): String? = lastDefaultInterfaceName
+
+    fun getLastDefaultNetworkTransport(): String? = lastDefaultNetworkTransport
+
+    fun getLastUnderlyingNetworkError(): String? = lastUnderlyingNetworkError
 
     override fun getSystemProxyStatus(): SystemProxyStatus {
         return SystemProxyStatus().apply {
@@ -447,12 +467,42 @@ class CoreManager(private val service: PersonalVpnService) :
 
     private fun applyUnderlyingNetworks(builder: VpnService.Builder) {
         val underlyingNetworks = findUnderlyingNetworks()
+        lastUnderlyingNetworkCount = underlyingNetworks.size
+        lastUnderlyingNetworkError = null
+
         if (underlyingNetworks.isEmpty()) {
-            Log.w(TAG, "No underlying Wi-Fi/cellular network found for Android VPN builder")
+            val message = "No underlying Wi-Fi/cellular network found for Android VPN builder"
+            lastUnderlyingNetworkError = message
+            Log.w(TAG, message)
             return
         }
 
         builder.setUnderlyingNetworks(underlyingNetworks.toTypedArray())
+    }
+
+    private fun updateUnderlyingNetworks(reason: String) {
+        val underlyingNetworks = findUnderlyingNetworks()
+        lastUnderlyingNetworkCount = underlyingNetworks.size
+        lastUnderlyingNetworkError = null
+
+        if (underlyingNetworks.isEmpty()) {
+            val message = "No underlying Wi-Fi/cellular network found during $reason"
+            lastUnderlyingNetworkError = message
+            Log.w(TAG, message)
+            return
+        }
+
+        runCatching {
+            service.setUnderlyingNetworks(underlyingNetworks.toTypedArray())
+            Log.d(
+                TAG,
+                "Updated Android VPN underlying networks during $reason: count=${underlyingNetworks.size}"
+            )
+        }.onFailure { error ->
+            val message = error.message ?: error.javaClass.simpleName
+            lastUnderlyingNetworkError = message
+            Log.w(TAG, "Failed to update Android VPN underlying networks during $reason", error)
+        }
     }
 
     @Suppress("DEPRECATION")
@@ -481,21 +531,21 @@ class CoreManager(private val service: PersonalVpnService) :
         val mtu = linkProperties.mtu.takeIf { it > 0 } ?: 1500
         val isWifi = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
         val isCellular = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+        val transport = when {
+            isWifi -> "wifi"
+            isCellular -> "cellular"
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "ethernet"
+            else -> "other"
+        }
 
+        lastDefaultInterfaceName = interfaceName
+        lastDefaultNetworkTransport = transport
+        updateUnderlyingNetworks("default interface update ($interfaceName/$transport)")
         listener.updateDefaultInterface(interfaceName, mtu, isWifi, isCellular)
         Log.d(
             TAG,
             "Default interface for libbox: $interfaceName mtu=$mtu wifi=$isWifi cellular=$isCellular"
         )
-
-        // Samsung Handover Fix: Update the VpnService's underlying networks dynamically
-        val underlying = findUnderlyingNetworks()
-        if (underlying.isNotEmpty()) {
-            runCatching {
-                service.setUnderlyingNetworks(underlying.toTypedArray())
-                Log.d(TAG, "Successfully updated underlying networks dynamically: size=${underlying.size}")
-            }.onFailure { Log.w(TAG, "Failed to dynamically set underlying networks on VpnService", it) }
-        }
     }
 
     private fun NetworkCapabilities.isUsableUnderlyingNetwork(): Boolean {
