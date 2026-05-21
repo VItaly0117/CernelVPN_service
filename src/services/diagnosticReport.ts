@@ -21,6 +21,7 @@ export function generateDiagnosticReport(
     `Android: ${diag.androidVersion || 'Unknown'}`,
     `VPN state: Permission: ${diag.vpnPermissionGranted ? 'Granted' : 'Not Granted'} · Service: ${diag.serviceRunning ? 'Running' : 'Stopped'} · Native Core: ${diag.coreRunning ? 'Active' : 'Idle'}`,
     `Core state: ${diag.coreRunning ? 'Running' : 'Not running'}`,
+    `Underlying: ${formatUnderlyingNetworkLabel(diag)}`,
     `Active profile: ${diag.activeProfileName ? sanitize(diag.activeProfileName) : 'None'} (${diag.selectedProtocol || 'Unknown'})`,
     `Panel: ${diag.panelConnectionStatus || 'Not configured'}`,
     `Split: Mode: ${diag.splitTunnelMode || 'vpn_all_except_selected'} · Count: ${diag.splitTunnelRuleCount ?? 0}`,
@@ -66,4 +67,20 @@ export function generateDiagnosticReport(
   }
 
   return lines.join('\n');
+}
+
+function formatUnderlyingNetworkLabel(diag: VpnDiagnosticResult): string {
+  const label = [
+    `${diag.underlyingNetworkCount ?? 0} network(s)`,
+    diag.defaultInterfaceName,
+    diag.defaultNetworkTransport,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  if (!diag.underlyingNetworkError) {
+    return label;
+  }
+
+  return `${label} · error: ${sanitize(diag.underlyingNetworkError)}`;
 }

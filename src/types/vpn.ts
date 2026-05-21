@@ -60,6 +60,10 @@ export interface VpnDiagnosticResult {
   deviceModel?: string;
   androidVersion?: string;
   wakeLockHeld?: boolean;
+  underlyingNetworkCount?: number;
+  defaultInterfaceName?: string;
+  defaultNetworkTransport?: string;
+  underlyingNetworkError?: string;
   splitTunnelMode?: SplitTunnelMode;
   splitTunnelRuleCount?: number;
   lastError?: string;

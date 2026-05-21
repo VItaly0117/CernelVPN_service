@@ -118,6 +118,15 @@ export function formatDiagnostics(
       isWarning: diag.serviceRunning && diag.coreRunning && !diag.wakeLockHeld,
     },
     {
+      label: 'Underlying Networks',
+      value: formatUnderlyingNetworkLabel(diag),
+      isWarning:
+        diag.serviceRunning &&
+        diag.coreRunning &&
+        ((diag.underlyingNetworkCount ?? 0) === 0 ||
+          Boolean(diag.underlyingNetworkError)),
+    },
+    {
       label: 'Active Profile',
       value: diag.activeProfileName ?? 'None',
       isWarning: !diag.activeProfileName,
@@ -213,6 +222,7 @@ export function buildDiagnosticsReport(diag: VpnDiagnosticResult): string {
     `Core Integrated: ${diag.coreIntegrated ? 'Yes' : 'No'}`,
     `VPN Core: ${diag.coreRunning ? 'Running' : 'Not started'}`,
     `Wake Lock: ${diag.wakeLockHeld ? 'Held' : 'Not held'}`,
+    `Underlying Networks: ${formatUnderlyingNetworkLabel(diag)}`,
     `Active Profile: ${diag.activeProfileName ?? 'None'}`,
     `Protocol: ${diag.selectedProtocol ?? 'Unknown'}`,
     `Split Tunnel: ${diag.splitTunnelMode ?? 'unknown'} · ${
@@ -246,4 +256,18 @@ function formatDeviceLabel(diag: VpnDiagnosticResult): string {
   }
 
   return device || android || 'Unknown';
+}
+
+function formatUnderlyingNetworkLabel(diag: VpnDiagnosticResult): string {
+  const parts = [
+    `${diag.underlyingNetworkCount ?? 0}`,
+    diag.defaultInterfaceName,
+    diag.defaultNetworkTransport,
+  ].filter(Boolean);
+
+  if (diag.underlyingNetworkError) {
+    parts.push(`error: ${diag.underlyingNetworkError}`);
+  }
+
+  return parts.join(' · ');
 }

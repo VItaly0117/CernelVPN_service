@@ -71,8 +71,13 @@ export function buildSingBoxConfig({
         ? [
             {
               tag: 'adguard-doh',
-              address: 'https://dns.adguard-dns.com/dns-query',
+              address: 'https://94.140.14.14/dns-query',
               detour: 'proxy',
+            },
+            {
+              tag: 'bootstrap-dns',
+              address: '8.8.8.8',
+              detour: 'direct',
             },
           ]
         : [
@@ -233,7 +238,15 @@ function buildRouteRules(
 ): Array<Record<string, unknown>> {
   const rules: Array<Record<string, unknown>> = [
     {
+      protocol: 'dns',
+      outbound: 'dns-out',
+    },
+    {
       ip_cidr: '172.19.0.2/32',
+      port: 53,
+      outbound: 'dns-out',
+    },
+    {
       port: 53,
       outbound: 'dns-out',
     },
@@ -263,6 +276,7 @@ function buildRouteRules(
   if (needsUdpFallbackBlock(profile)) {
     rules.push({
       network: 'udp',
+      port: 443,
       outbound: 'block',
     });
   }

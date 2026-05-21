@@ -98,6 +98,10 @@ describe('singBoxConfig', () => {
       },
     ]);
     expect(config.outbounds).toContainEqual({type: 'dns', tag: 'dns-out'});
+    expect(config.route.rules[0]).toEqual({
+      protocol: 'dns',
+      outbound: 'dns-out',
+    });
     expect(config.route.rules).toContainEqual({
       ip_cidr: '172.19.0.2/32',
       port: 53,
@@ -105,7 +109,7 @@ describe('singBoxConfig', () => {
     });
   });
 
-  it('blocks non-DNS UDP for VLESS Reality Vision so browsers fall back to TCP', () => {
+  it('blocks QUIC UDP/443 for VLESS Reality Vision so browsers fall back to TCP', () => {
     const config = buildSingBoxConfig({
       profile: vlessRealityProfile,
       splitTunnelMode: 'vpn_all',
@@ -114,6 +118,11 @@ describe('singBoxConfig', () => {
     });
 
     expect(config.route.rules).toContainEqual({
+      network: 'udp',
+      port: 443,
+      outbound: 'block',
+    });
+    expect(config.route.rules).not.toContainEqual({
       network: 'udp',
       outbound: 'block',
     });
