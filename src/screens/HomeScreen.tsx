@@ -13,9 +13,15 @@ import {
   Modal,
   StatusBar as NativeStatusBar,
 } from 'react-native';
+import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
 import {AnimatedShield} from '../components/AnimatedShield';
 import {CustomNotification} from '../components/CustomNotification';
 import {TrafficGraph} from '../components/TrafficGraph';
+import {TrafficStatsBar} from '../components/TrafficStatsBar';
+import {ParticlesBurst} from '../components/ParticlesBurst';
+import {IpInfoBadge} from '../components/IpInfoBadge';
+import {useTrafficStats} from '../hooks/useTrafficStats';
+import {useIpInfo} from '../hooks/useIpInfo';
 import {useVpnStore, vpnStore} from '../store/vpnStore';
 import * as vpnService from '../services/vpnService';
 import {
@@ -26,6 +32,7 @@ import {
 import type {AppTheme, ThemeMode} from '../theme/theme';
 import {getStatusColors, useResolvedTheme} from '../theme/theme';
 import {androidHeaderTopPadding} from '../services/layoutService';
+import {useTranslation} from 'react-i18next';
 import type {VpnStatus} from '../types/vpn';
 import {getNetworkType, onNetworkTypeChanged} from '../native/NativeVpn';
 
@@ -33,26 +40,11 @@ interface Props {
   onNavigate: (screen: string) => void;
 }
 
-const THEME_OPTIONS: Array<{mode: ThemeMode; label: string}> = [
-  {mode: 'system', label: 'Auto'},
-  {mode: 'light', label: 'Light'},
-  {mode: 'dark', label: 'Dark'},
-];
-
 const HEADER_TOP_PADDING = androidHeaderTopPadding(
   Platform.OS,
   NativeStatusBar.currentHeight,
   14,
 );
-
-const MENU_ICONS: Record<string, string> = {
-  'Import Profile': '↓',
-  '3X-UI Panel': '⚙',
-  'Split Tunneling': '⇄',
-  Diagnostics: '⚿',
-  'Update Rules': '↻',
-  'Technical Guide': '📖',
-};
 
 // ---------------------------------------------------------------------------
 // Concentric Wi-Fi Arcs Custom Icon
@@ -307,87 +299,7 @@ function ConnectionHealthStrip({
 // ---------------------------------------------------------------------------
 // Slide-up Blueprints Modal
 // ---------------------------------------------------------------------------
-function DocumentationModal({
-  visible,
-  onClose,
-  theme,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  theme: AppTheme;
-}): React.JSX.Element {
-  return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      statusBarTranslucent
-      navigationBarTranslucent
-      onRequestClose={onClose}>
-      <SafeAreaView style={{flex: 1, backgroundColor: theme.colors.background}}>
-        <View
-          style={[
-            styles.modalHeader,
-            {
-              borderBottomColor: theme.colors.separator,
-              backgroundColor: theme.colors.surface,
-              paddingTop: Platform.OS === 'android' ? 24 : 10,
-            },
-          ]}>
-          <Text style={[styles.modalTitle, {color: theme.colors.text, fontFamily: theme.fonts.extraBold}]}>
-            🛡️ SYSTEM BLUEPRINTS
-          </Text>
-          <TouchableOpacity
-            style={[
-              styles.menuCloseButton,
-              {
-                borderColor: theme.colors.separator,
-                width: 32,
-                height: 32,
-                borderRadius: 16,
-              },
-            ]}
-            onPress={onClose}>
-            <Text style={[styles.menuCloseText, {color: theme.colors.text, fontSize: 20, lineHeight: 22}]}>×</Text>
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator={true}>
-          <Text style={[styles.docsH1, {color: theme.colors.primary, fontFamily: theme.fonts.extraBold}]}>
-            KernelVPN Core Architecture
-          </Text>
-          <Text style={[styles.docsPara, {color: theme.colors.secondaryText, fontFamily: theme.fonts.medium}]}>
-            KernelVPN bridges a native Android VPN Service wrapping the ultra-fast Sing-box routing engine. All network policies, routing rules, DNS parameters, and blocked application namespaces are compiled locally into a secure binary execution config.
-          </Text>
-
-          <Text style={[styles.docsH2, {color: theme.colors.text, fontFamily: theme.fonts.bold}]}>
-            📶 Native Samsung Handover Fix
-          </Text>
-          <Text style={[styles.docsPara, {color: theme.colors.secondaryText, fontFamily: theme.fonts.medium}]}>
-            Samsung devices strictly enforce target socket bindings inside their active interface drivers. When transitioning between Wi-Fi and Mobile Networks, standard Android VPN handles this poorly, resulting in data blackholes.
-            {"\n\n"}
-            KernelVPN fixes this by tracking network capabilities dynamically. When default interfaces switch, we dynamically notify the active VpnService, re-binding underlying network handlers in real-time without tearing down the cryptographic tunnel.
-          </Text>
-
-          <Text style={[styles.docsH2, {color: theme.colors.text, fontFamily: theme.fonts.bold}]}>
-            🚫 DNS-Level Ad Blocking (DNS DoH)
-          </Text>
-          <Text style={[styles.docsPara, {color: theme.colors.secondaryText, fontFamily: theme.fonts.medium}]}>
-            When DNS AdBlocker is active, the Sing-box config detours all DNS packets to a highly secure DNS-over-HTTPS (DoH) tunnel connected to AdGuard resolvers. Trackers, ads, and telemetry queries are black-listed and blocked locally on your device, preventing bandwidth loss and tracking.
-          </Text>
-
-          <Text style={[styles.docsH2, {color: theme.colors.text, fontFamily: theme.fonts.bold}]}>
-            ⇄ Split Tunneling Rule-Set
-          </Text>
-          <Text style={[styles.docsPara, {color: theme.colors.secondaryText, fontFamily: theme.fonts.medium}]}>
-            Split tunneling allows detouring specific applications through the secure proxy node while keeping banking apps or domestic sites on direct local routing. Network-Aware mode loads dedicated rulesets tailored automatically for your active Wi-Fi or cellular networks.
-          </Text>
-
-          <View style={{height: 40}} />
-        </ScrollView>
-      </SafeAreaView>
-    </Modal>
-  );
-}
+// DocumentationModal moved to SettingsScreen/Modal
 
 // ---------------------------------------------------------------------------
 // ConnectionTimer — Elapsed time since VPN connection
@@ -459,14 +371,20 @@ function ConnectionTimer({
 // HomeScreen
 // ---------------------------------------------------------------------------
 export function HomeScreen({onNavigate}: Props): React.JSX.Element {
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [showBurst, setShowBurst] = useState(false);
+  const { t, i18n } = useTranslation();
   const state = useVpnStore();
   const theme = useResolvedTheme(state.themeMode);
   const effectiveStatus = state.lastError ? 'error' : state.status;
   const statusColors = getStatusColors(effectiveStatus, theme);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [docsVisible, setDocsVisible] = useState(false);
   const [networkType, setNetworkType] = useState<'wifi' | 'cellular' | 'other' | 'none'>('none');
-  
+  const isConnected = effectiveStatus === 'connected';
+
+  // Phase 1 hooks: live traffic + IP info
+  const trafficStats = useTrafficStats(isConnected);
+  const ipInfo = useIpInfo(isConnected);
+
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [toast, setToast] = useState<{message: string; type: 'success' | 'info' | 'warning' | 'error'} | null>(null);
 
@@ -489,6 +407,7 @@ export function HomeScreen({onNavigate}: Props): React.JSX.Element {
           message: `🛡️ Tunnel secure via ${protocolLabel}`,
           type: 'success',
         });
+        setShowBurst(true);
       } else if (state.status === 'connecting') {
         setToast({
           message: '⚡ Establishing secure channel…',
@@ -499,6 +418,16 @@ export function HomeScreen({onNavigate}: Props): React.JSX.Element {
           message: '🔌 Connection closed safely',
           type: 'info',
         });
+      }
+      // Haptic feedback
+      if (state.status === 'connected') {
+        ReactNativeHapticFeedback.trigger('notificationSuccess', {enableVibrateFallback: true, ignoreAndroidSystemSettings: false});
+      } else if (state.status === 'connecting') {
+        ReactNativeHapticFeedback.trigger('impactLight', {enableVibrateFallback: true, ignoreAndroidSystemSettings: false});
+      } else if (state.status === 'disconnected' && lastStatus.current !== 'disconnected') {
+        ReactNativeHapticFeedback.trigger('impactMedium', {enableVibrateFallback: true, ignoreAndroidSystemSettings: false});
+      } else if (state.status === 'error') {
+        ReactNativeHapticFeedback.trigger('notificationError', {enableVibrateFallback: true, ignoreAndroidSystemSettings: false});
       }
       lastStatus.current = state.status;
     }
@@ -597,6 +526,12 @@ export function HomeScreen({onNavigate}: Props): React.JSX.Element {
       );
       return;
     }
+    
+    ReactNativeHapticFeedback.trigger('impactHeavy', {
+      enableVibrateFallback: true,
+      ignoreAndroidSystemSettings: false,
+    });
+    
     try {
       await vpnService.connect(state.activeProfile);
     } catch {
@@ -605,6 +540,10 @@ export function HomeScreen({onNavigate}: Props): React.JSX.Element {
   }, [state.activeProfile, onNavigate]);
 
   const handleDisconnect = useCallback(async () => {
+    ReactNativeHapticFeedback.trigger('notificationError', {
+      enableVibrateFallback: true,
+      ignoreAndroidSystemSettings: false,
+    });
     try {
       await vpnService.disconnect();
     } catch {
@@ -656,7 +595,6 @@ export function HomeScreen({onNavigate}: Props): React.JSX.Element {
       );
       if (validateRulesManifest(manifest)) {
         await applyRulesManifest(manifest);
-        setDocsVisible(true);
         setToast({
           message: `Rules updated to v${manifest.version}. Routing config refreshed.`,
           type: 'success',
@@ -671,13 +609,6 @@ export function HomeScreen({onNavigate}: Props): React.JSX.Element {
     }
   }, [reconnectActiveTunnel]);
 
-  const navigateFromMenu = useCallback(
-    (screen: string) => {
-      setMenuOpen(false);
-      onNavigate(screen);
-    },
-    [onNavigate],
-  );
 
   const activeProfile = state.activeProfile;
 
@@ -689,58 +620,10 @@ export function HomeScreen({onNavigate}: Props): React.JSX.Element {
         type={toast?.type ?? 'info'}
         onDismiss={() => setToast(null)}
       />
-      <SideMenu
-        visible={menuOpen}
-        theme={theme}
-        themeMode={state.themeMode}
-        savedProfilesCount={state.savedProfiles.length}
-        enabledSplitRulesCount={
-          state.splitTunnelRules.filter(rule => rule.enabled).length
-        }
-        panelConfigured={Boolean(state.panelSettings)}
-        onClose={() => setMenuOpen(false)}
-        onNavigate={navigateFromMenu}
-        onUpdateRules={handleUpdateRules}
-        onOpenBlueprints={() => {
-          setMenuOpen(false);
-          setDocsVisible(true);
-        }}
-      />
       <Animated.View style={{flex: 1, opacity: fadeAnim}}>
         {/* Fixed Header */}
         <View style={[styles.header, {borderBottomColor: theme.colors.separator, backgroundColor: theme.colors.background}]}>
-          <TouchableOpacity
-            style={[
-              styles.menuButton,
-              {
-                backgroundColor: theme.colors.surface,
-                borderColor: theme.colors.separator,
-              },
-            ]}
-            activeOpacity={0.78}
-            onPress={() => setMenuOpen(true)}>
-            <View style={styles.hamburgerWrap}>
-              <View
-                style={[
-                  styles.hamburgerBar,
-                  {backgroundColor: theme.colors.text},
-                ]}
-              />
-              <View
-                style={[
-                  styles.hamburgerBar,
-                  {backgroundColor: theme.colors.text},
-                ]}
-              />
-              <View
-                style={[
-                  styles.hamburgerBar,
-                  {backgroundColor: theme.colors.text},
-                ]}
-              />
-            </View>
-          </TouchableOpacity>
-          <View style={styles.headerTitleWrap}>
+          <View style={[styles.headerTitleWrap, { marginLeft: 6 }]}>
             <Text
               style={[
                 styles.brand,
@@ -763,7 +646,7 @@ export function HomeScreen({onNavigate}: Props): React.JSX.Element {
                 },
               ]}
               numberOfLines={1}>
-              Crypto Shield Active
+              {t('home.subtitle')}
             </Text>
           </View>
           
@@ -787,16 +670,28 @@ export function HomeScreen({onNavigate}: Props): React.JSX.Element {
 
         {/* Scrollable Viewport */}
         <ScrollView
-          contentContainerStyle={[styles.scrollContent, {paddingBottom: 190}]}
+          contentContainerStyle={[styles.scrollContent, {paddingBottom: 260}]}
           showsVerticalScrollIndicator={false}>
           
-          {/* Animated Shield */}
-          <View style={styles.shieldWrapper}>
-            <AnimatedShield status={effectiveStatus} />
-          </View>
+          {/* Unified Connection Dashboard */}
+          <View style={[styles.dashboardCard, {backgroundColor: theme.isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)', borderColor: theme.colors.separator}]}>
+            <View style={styles.shieldWrapper}>
+              <AnimatedShield status={effectiveStatus} />
+            </View>
 
-          {/* Traffic Graph (Equalizer) */}
-          <TrafficGraph status={effectiveStatus} theme={theme} />
+            {effectiveStatus === 'connected' && (
+              <View style={styles.dashboardConnectedInfo}>
+                <IpInfoBadge info={ipInfo} />
+                <TrafficStatsBar
+                  rxBytesPerSec={trafficStats.rxBytesPerSec}
+                  txBytesPerSec={trafficStats.txBytesPerSec}
+                  totalRxBytes={trafficStats.totalRxBytes}
+                  totalTxBytes={trafficStats.totalTxBytes}
+                  active={effectiveStatus === 'connected'}
+                />
+              </View>
+            )}
+          </View>
 
           <ConnectionHealthStrip
             theme={theme}
@@ -809,46 +704,25 @@ export function HomeScreen({onNavigate}: Props): React.JSX.Element {
           {/* Security widgets */}
           <View style={styles.securityWidgetsContainer}>
             <Text style={[styles.sectionTitle, {color: theme.colors.text, fontFamily: theme.fonts.bold}]}>
-              🔐 Security Controls
+              {t('home.security_controls')}
             </Text>
             <SecurityToggleRow
-              label="DNS AdBlocker"
-              sublabel="Detour traffic over secure AdGuard DNS (DoH) to block ads"
+              label={t('home.ad_blocker')}
+              sublabel={t('home.ad_blocker_sub')}
               value={state.adBlockEnabled}
               onToggle={handleToggleAdBlock}
               theme={theme}
             />
             <SecurityToggleRow
-              label="Network-Aware Separate Rules"
-              sublabel="Apply separate routing tables for Cellular & Wi-Fi interfaces"
+              label={t('home.network_aware')}
+              sublabel={t('home.network_aware_sub')}
               value={state.differentiateNetworkRules}
               onToggle={handleToggleNetworkAwareRules}
               theme={theme}
             />
           </View>
 
-          {/* Blueprints Banner */}
-          <TouchableOpacity
-            style={[
-              styles.infoBanner,
-              {
-                backgroundColor: theme.isDark ? 'rgba(139, 92, 246, 0.08)' : 'rgba(124, 58, 237, 0.04)',
-                borderColor: theme.colors.primarySoft,
-              },
-            ]}
-            activeOpacity={0.78}
-            onPress={() => setDocsVisible(true)}>
-            <Text style={{fontSize: 18, color: theme.colors.primary}}>📖</Text>
-            <View style={{flex: 1, marginLeft: 10}}>
-              <Text style={[styles.infoBannerTitle, {color: theme.colors.text, fontFamily: theme.fonts.bold}]}>
-                Technical Blueprints Guide
-              </Text>
-              <Text style={[styles.infoBannerSub, {color: theme.colors.secondaryText, fontFamily: theme.fonts.medium}]}>
-                View how Sing-box, AdBlock, and Samsung handover protocols protect your device.
-              </Text>
-            </View>
-            <Text style={{fontSize: 18, color: theme.colors.primary}}>›</Text>
-          </TouchableOpacity>
+
 
           {state.lastError ? (
             <Text
@@ -889,7 +763,7 @@ export function HomeScreen({onNavigate}: Props): React.JSX.Element {
                 </View>
               ) : (
                 <Text style={{color: theme.colors.secondaryText, fontSize: 13, fontWeight: '600'}}>
-                  No connection profile selected
+                  {t('home.no_profile')}
                 </Text>
               )}
             </View>
@@ -922,369 +796,24 @@ export function HomeScreen({onNavigate}: Props): React.JSX.Element {
                 }
               ]}
             >
-              {effectiveStatus === 'connected' ? 'DISCONNECT SECURE TUNNEL' : 'PROTECT DEVICE TRAFFIC'}
+              {effectiveStatus === 'connected' ? t('home.disconnect_tunnel') : t('home.protect_traffic')}
             </Text>
           </TouchableOpacity>
         </View>
+        {showBurst && (
+          <ParticlesBurst
+            x={150}
+            y={150} 
+            color={theme.colors.primary} 
+            onComplete={() => setShowBurst(false)} 
+          />
+        )}
       </Animated.View>
-
-      <DocumentationModal
-        visible={docsVisible}
-        onClose={() => setDocsVisible(false)}
-        theme={theme}
-      />
     </SafeAreaView>
   );
 }
 
 // ---------------------------------------------------------------------------
-// SideMenu — Animated slide-in panel
-// ---------------------------------------------------------------------------
-function SideMenu({
-  visible,
-  theme,
-  themeMode,
-  savedProfilesCount,
-  enabledSplitRulesCount,
-  panelConfigured,
-  onClose,
-  onNavigate,
-  onUpdateRules,
-  onOpenBlueprints,
-}: {
-  visible: boolean;
-  theme: AppTheme;
-  themeMode: ThemeMode;
-  savedProfilesCount: number;
-  enabledSplitRulesCount: number;
-  panelConfigured: boolean;
-  onClose: () => void;
-  onNavigate: (screen: string) => void;
-  onUpdateRules: () => void;
-  onOpenBlueprints: () => void;
-}): React.JSX.Element {
-  const slideAnim = useRef(new Animated.Value(-340)).current;
-  const backdropAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (visible) {
-      Animated.parallel([
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 250,
-          useNativeDriver: true,
-        }),
-        Animated.timing(backdropAnim, {
-          toValue: 1,
-          duration: 250,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    } else {
-      Animated.parallel([
-        Animated.timing(slideAnim, {
-          toValue: -340,
-          duration: 250,
-          useNativeDriver: true,
-        }),
-        Animated.timing(backdropAnim, {
-          toValue: 0,
-          duration: 250,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
-  }, [visible, slideAnim, backdropAnim]);
-
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="none"
-      statusBarTranslucent
-      navigationBarTranslucent
-      onRequestClose={onClose}>
-      <View style={styles.menuOverlay}>
-        <Animated.View
-          style={[styles.menuBackdrop, {opacity: backdropAnim}]}>
-          <TouchableOpacity
-            style={StyleSheet.absoluteFillObject}
-            activeOpacity={1}
-            onPress={onClose}
-          />
-        </Animated.View>
-        <Animated.View
-          style={[
-            styles.menuPanel,
-            {
-              backgroundColor: theme.isDark
-                ? 'rgba(13, 14, 18, 0.94)'
-                : 'rgba(255, 255, 255, 0.96)',
-              borderColor: theme.colors.separator,
-              transform: [{translateX: slideAnim}],
-              paddingTop: Platform.OS === 'android' ? 32 : 22,
-            },
-          ]}>
-          <ScrollView showsVerticalScrollIndicator={false}>
-            <View style={styles.menuHeader}>
-              <View>
-                <Text
-                  style={[
-                    styles.menuTitle,
-                    {
-                      color: theme.colors.text,
-                      fontFamily: theme.fonts.extraBold,
-                    },
-                  ]}>
-                  KernelVPN
-                </Text>
-                <Text
-                  style={[
-                    styles.menuSubtitle,
-                    {
-                      color: theme.colors.secondaryText,
-                      fontFamily: theme.fonts.medium,
-                    },
-                  ]}>
-                  Control center
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={[
-                  styles.menuCloseButton,
-                  {borderColor: theme.colors.separator},
-                ]}
-                onPress={onClose}
-                activeOpacity={0.78}>
-                <Text
-                  style={[styles.menuCloseText, {color: theme.colors.text}]}>
-                  ×
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.menuStats}>
-              <MenuStat
-                label="Profiles"
-                value={String(savedProfilesCount)}
-                theme={theme}
-              />
-              <MenuStat
-                label="Rules"
-                value={String(enabledSplitRulesCount)}
-                theme={theme}
-              />
-              <MenuStat
-                label="Panel"
-                value={panelConfigured ? 'On' : 'Off'}
-                theme={theme}
-              />
-            </View>
-
-            <Text
-              style={[
-                styles.menuSectionLabel,
-                {
-                  color: theme.colors.tertiaryText,
-                  fontFamily: theme.fonts.semiBold,
-                },
-              ]}>
-              Theme
-            </Text>
-            <View
-              style={[
-                styles.menuThemeGroup,
-                {
-                  backgroundColor: theme.colors.background,
-                  borderColor: theme.colors.separator,
-                },
-              ]}>
-              {THEME_OPTIONS.map(option => {
-                const selected = themeMode === option.mode;
-                return (
-                  <TouchableOpacity
-                    key={option.mode}
-                    style={[
-                      styles.menuThemeOption,
-                      selected && {backgroundColor: theme.colors.primary},
-                    ]}
-                    activeOpacity={0.78}
-                    onPress={() => vpnStore.setThemeMode(option.mode)}>
-                    <Text
-                      style={[
-                        styles.menuThemeText,
-                        {
-                          color: selected
-                            ? '#FFFFFF'
-                            : theme.colors.secondaryText,
-                          fontFamily: theme.fonts.bold,
-                        },
-                      ]}>
-                      {option.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <Text
-              style={[
-                styles.menuSectionLabel,
-                {
-                  color: theme.colors.tertiaryText,
-                  fontFamily: theme.fonts.semiBold,
-                },
-              ]}>
-              Menu
-            </Text>
-            <MenuItem
-              label="Import Profile"
-              value="VLESS, VMess, Trojan, Shadowsocks"
-              theme={theme}
-              onPress={() => onNavigate('ImportProfile')}
-            />
-            <MenuItem
-              label="3X-UI Panel"
-              value="Server status and VLESS import"
-              theme={theme}
-              onPress={() => onNavigate('Panel')}
-            />
-            <MenuItem
-              label="Split Tunneling"
-              value="All apps, selected only, exceptions"
-              theme={theme}
-              onPress={() => onNavigate('SplitTunneling')}
-            />
-            <MenuItem
-              label="Diagnostics"
-              value="Core, VPN, panel and battery state"
-              theme={theme}
-              onPress={() => onNavigate('Diagnostics')}
-            />
-            <MenuItem
-              label="Update Rules"
-              value="Refresh trusted routing rules"
-              theme={theme}
-              onPress={() => {
-                onClose();
-                onUpdateRules();
-              }}
-            />
-            <MenuItem
-              label="Technical Guide"
-              value="View system blueprints and docs"
-              theme={theme}
-              onPress={onOpenBlueprints}
-            />
-          </ScrollView>
-        </Animated.View>
-      </View>
-    </Modal>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// MenuStat — Stat card inside the side menu
-// ---------------------------------------------------------------------------
-function MenuStat({
-  label,
-  value,
-  theme,
-}: {
-  label: string;
-  value: string;
-  theme: AppTheme;
-}): React.JSX.Element {
-  return (
-    <View
-      style={[
-        styles.menuStat,
-        {
-          backgroundColor: theme.colors.background,
-          borderColor: theme.colors.separator,
-        },
-      ]}>
-      <Text
-        style={[
-          styles.menuStatValue,
-          {
-            color: theme.colors.text,
-            fontFamily: theme.fonts.bold,
-          },
-        ]}>
-        {value}
-      </Text>
-      <Text
-        style={[
-          styles.menuStatLabel,
-          {
-            color: theme.colors.tertiaryText,
-            fontFamily: theme.fonts.bold,
-          },
-        ]}>
-        {label}
-      </Text>
-    </View>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// MenuItem — Action row inside the side menu
-// ---------------------------------------------------------------------------
-function MenuItem({
-  label,
-  value,
-  theme,
-  onPress,
-}: {
-  label: string;
-  value: string;
-  theme: AppTheme;
-  onPress: () => void;
-}): React.JSX.Element {
-  const icon = MENU_ICONS[label] ?? '';
-
-  return (
-    <TouchableOpacity
-      style={[
-        styles.menuItem,
-        {
-          backgroundColor: theme.colors.background,
-          borderColor: theme.colors.separator,
-        },
-      ]}
-      activeOpacity={0.78}
-      onPress={onPress}>
-      {icon ? <Text style={styles.menuItemIcon}>{icon}</Text> : null}
-      <View style={styles.menuItemTextWrap}>
-        <Text
-          style={[
-            styles.menuItemLabel,
-            {
-              color: theme.colors.text,
-              fontFamily: theme.fonts.bold,
-            },
-          ]}>
-          {label}
-        </Text>
-        <Text
-          style={[
-            styles.menuItemValue,
-            {
-              color: theme.colors.secondaryText,
-              fontFamily: theme.fonts.medium,
-            },
-          ]}
-          numberOfLines={1}>
-          {value}
-        </Text>
-      </View>
-      <Text style={[styles.menuItemArrow, {color: theme.colors.tertiaryText}]}>
-        ›
-      </Text>
-    </TouchableOpacity>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Styles
@@ -1336,6 +865,20 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '500',
     marginTop: 2,
+  },
+  dashboardCard: {
+    marginHorizontal: 16,
+    borderRadius: 24,
+    borderWidth: 1,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+    overflow: 'hidden',
+  },
+  dashboardConnectedInfo: {
+    width: '100%',
+    paddingTop: 8,
   },
   statusPill: {
     minHeight: 34,
@@ -1455,6 +998,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 18,
   },
+  themeToggleRow: {
+    flexDirection: 'row',
+    borderRadius: 12,
+    padding: 4,
+    marginTop: 8,
+  },
   menuTitle: {
     fontSize: 25,
     fontWeight: '800',
@@ -1573,19 +1122,18 @@ const styles = StyleSheet.create({
   // Overhauled styles
   stickyBottomPanel: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    borderTopWidth: 1,
+    bottom: 100, // Sits perfectly above BottomTabBar (about 76dp height + margins)
+    left: 14,
+    right: 14,
+    borderRadius: 22,
+    borderWidth: 1,
     paddingVertical: 14,
     paddingHorizontal: 20,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
     alignItems: 'center',
     shadowColor: '#000000',
-    shadowOpacity: 0.15,
-    shadowRadius: 15,
-    shadowOffset: {width: 0, height: -4},
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: {width: 0, height: 4},
     elevation: 8,
   },
   protocolBadge: {

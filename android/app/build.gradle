@@ -37,7 +37,7 @@ android {
         release {
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
-            // signingConfig signingConfigs.release
+            signingConfig signingConfigs.debug
         }
     }
 
@@ -70,3 +70,5 @@ dependencies {
     // Prebuilt sing-box/libbox Android runtime used by CoreManager.
     implementation "net.clever-vpn:libbox-android:1.0.1"
 }
+
+apply from: "../../node_modules/react-native-vector-icons/fonts.gradle"

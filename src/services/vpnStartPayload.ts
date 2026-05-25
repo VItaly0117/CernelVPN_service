@@ -17,6 +17,8 @@ export function createVpnStartPayload({
   proxyDomains = [],
   blockedApps = [],
   blockAppsEnabled = false,
+  killSwitchEnabled = false,
+  bypassLan = false,
 }: {
   profile: VpnProfile;
   splitTunnelMode: SplitTunnelMode;
@@ -26,6 +28,8 @@ export function createVpnStartPayload({
   proxyDomains?: string[];
   blockedApps?: string[];
   blockAppsEnabled?: boolean;
+  killSwitchEnabled?: boolean;
+  bypassLan?: boolean;
 }): VpnStartPayload {
   const enabledSplitTunnelRules = splitTunnelRules.filter(rule => rule.enabled);
 
@@ -43,6 +47,9 @@ export function createVpnStartPayload({
       proxyDomains,
       blockedApps,
       blockAppsEnabled,
+      bypassLan,
     }),
+    killSwitchEnabled,
+    bypassLan,
   };
 }

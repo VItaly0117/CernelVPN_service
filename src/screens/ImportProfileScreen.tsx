@@ -15,8 +15,10 @@ import {
   Platform,
   StatusBar as NativeStatusBar,
   Keyboard,
+  ActivityIndicator,
 } from 'react-native';
 import {parseProfileLink, isProfileValid} from '../services/profileParser';
+import {fetchSubscription} from '../services/subscriptionService';
 import {vpnStore, useVpnStore} from '../store/vpnStore';
 import type {VpnProfile} from '../types/vpn';
 import {useResolvedTheme, type AppTheme} from '../theme/theme';
@@ -39,14 +41,44 @@ export function ImportProfileScreen({onBack}: Props): React.JSX.Element {
   const [linkText, setLinkText] = useState('');
   const [parsedProfile, setParsedProfile] = useState<VpnProfile | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
+  const [isFetchingSub, setIsFetchingSub] = useState(false);
 
-  const handleParse = useCallback(() => {
+  const handleParse = useCallback(async () => {
     Keyboard.dismiss();
     setParseError(null);
     setParsedProfile(null);
+
+    const text = linkText.trim();
+    if (!text) {return;}
+
+    // Check if it's a subscription link
+    if (text.startsWith('http://') || text.startsWith('https://')) {
+      setIsFetchingSub(true);
+      try {
+        const subId = Date.now().toString();
+        await fetchSubscription({
+          id: subId,
+          name: 'Subscription ' + subId.slice(-4),
+          url: text,
+          updatedAt: Date.now(),
+        });
+        Alert.alert(
+          'Subscription Added',
+          'Successfully downloaded proxy list.',
+          [{text: 'OK', onPress: onBack}]
+        );
+      } catch (e: any) {
+        setParseError('Failed to fetch subscription: ' + e.message);
+        appLogger.error('profile-import', `Sub error: ${e.message}`);
+      } finally {
+        setIsFetchingSub(false);
+      }
+      return;
+    }
+
     appLogger.info('profile-import', 'Initiating manual profile paste parse');
 
-    const result = parseProfileLink(linkText);
+    const result = parseProfileLink(text);
     if (result.success && result.profile) {
       setParsedProfile(result.profile);
       appLogger.info('profile-import', `Profile parsed successfully: protocol=${result.profile.protocol}, host=${result.profile.host}`);
@@ -121,6 +153,8 @@ export function ImportProfileScreen({onBack}: Props): React.JSX.Element {
               autoCapitalize="none"
               autoCorrect={false}
               textAlignVertical="top"
+              blurOnSubmit={true}
+              onSubmitEditing={handleParse}
             />
 
             <TouchableOpacity
@@ -130,8 +164,12 @@ export function ImportProfileScreen({onBack}: Props): React.JSX.Element {
                 !linkText.trim() && styles.disabledButton,
               ]}
               onPress={handleParse}
-              disabled={!linkText.trim()}>
-              <Text style={styles.primaryButtonText}>Parse Link</Text>
+              disabled={!linkText.trim() || isFetchingSub}>
+              {isFetchingSub ? (
+                <ActivityIndicator color={'#FFFFFF'} />
+              ) : (
+                <Text style={styles.primaryButtonText}>Parse Link</Text>
+              )}
             </TouchableOpacity>
           </View>
 

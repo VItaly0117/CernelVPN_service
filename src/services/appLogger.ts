@@ -14,7 +14,9 @@ export interface LogEvent {
     | 'xui-panel'
     | 'profile-import'
     | 'split-tunnel'
-    | 'persistence';
+    | 'persistence'
+    | 'ping'
+    | 'subscription';
   code?: string;
   message: string;
   details?: object;
@@ -99,6 +101,25 @@ export function log(
   ringBuffer.unshift(event);
   if (ringBuffer.length > BUFFER_MAX_SIZE) {
     ringBuffer.pop();
+  }
+
+  // Check for AdBlocking
+  if (source === 'native-vpn') {
+    const isAdBlock = 
+      sanitizedMessage.includes('outbound=adguard-doh') || 
+      sanitizedMessage.includes('outbound=block') ||
+      (options?.raw && (options.raw.includes('outbound=adguard-doh') || options.raw.includes('outbound=block')));
+    
+    if (isAdBlock) {
+      try {
+        const {vpnStore} = require('../store/vpnStore');
+        if (vpnStore.getState().adBlockEnabled) {
+          vpnStore.incrementBlockedAds();
+        }
+      } catch (e) {
+        // Ignore circular dep or store init errors
+      }
+    }
   }
 
   // Save critical errors to persisted state

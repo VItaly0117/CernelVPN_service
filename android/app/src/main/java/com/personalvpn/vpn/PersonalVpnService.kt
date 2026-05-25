@@ -11,6 +11,12 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
+import java.net.InetAddress
+
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.personalvpn.MainActivity
@@ -66,6 +72,10 @@ class PersonalVpnService : VpnService() {
             private set
 
         @Volatile
+        var currentKillSwitchEnabled: Boolean = false
+            private set
+
+        @Volatile
         var lastConnectionError: String? = null
             private set
 
@@ -83,6 +93,10 @@ class PersonalVpnService : VpnService() {
     private var core: CoreManager? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    private var watchdogExecutor: ScheduledExecutorService? = null
+    private var watchdogFuture: ScheduledFuture<*>? = null
+    private var consecutiveFailures = 0
 
     // -------------------------------------------------------------------------
     // Lifecycle
@@ -122,6 +136,7 @@ class PersonalVpnService : VpnService() {
                 currentSplitTunnelRuleCount = startConfig.splitTunnelRules.count { it.enabled }
                 currentActiveProfileName = startConfig.profileName
                 currentSelectedProtocol = startConfig.protocol
+                currentKillSwitchEnabled = startConfig.killSwitchEnabled
                 lastConnectionError = null
 
                 // Start foreground immediately (Android 8+ requirement)
@@ -163,18 +178,24 @@ class PersonalVpnService : VpnService() {
     // -------------------------------------------------------------------------
 
     private fun startCoreAsync(startConfig: StartConfig) {
+        val currentCore = core
         Thread {
-            val result = core?.start(startConfig.coreConfigJson)
+            val result = currentCore?.start(startConfig.coreConfigJson)
                 ?: Result.failure(IllegalStateException("CoreManager is unavailable"))
 
             mainHandler.post {
-                if (result.isSuccess && core?.isRunning() == true) {
+                if (!isServiceRunning || core !== currentCore) {
+                    Log.i(TAG, "Core start completed but service is no longer running or core changed")
+                    return@post
+                }
+                if (result.isSuccess && currentCore?.isRunning() == true) {
                     updateStatus(VpnStatus.CONNECTED)
                     updateNotification("Connected")
+                    startWatchdog()
                     Log.i(TAG, "VPN core started successfully")
                 } else {
                     val message = result.exceptionOrNull()?.message
-                        ?: core?.getLastError()
+                        ?: currentCore?.getLastError()
                         ?: "Core failed to start"
                     failConnection("CORE_START_FAILED", message)
                 }
@@ -194,7 +215,8 @@ class PersonalVpnService : VpnService() {
                     splitTunnelMode = "vpn_all_except_selected",
                     splitTunnelRules = emptyList(),
                     profileName = null,
-                    protocol = null
+                    protocol = null,
+                killSwitchEnabled = false
                 )
             }
 
@@ -210,7 +232,8 @@ class PersonalVpnService : VpnService() {
                 splitTunnelMode = mode,
                 splitTunnelRules = rules,
                 profileName = profile?.optString("name")?.takeIf { it.isNotBlank() },
-                protocol = profile?.optString("protocol")?.takeIf { it.isNotBlank() }
+                protocol = profile?.optString("protocol")?.takeIf { it.isNotBlank() },
+                killSwitchEnabled = payload.optBoolean("killSwitchEnabled", false)
             )
         } catch (e: Exception) {
             Log.w(TAG, "Failed to parse start payload; falling back to profile JSON", e)
@@ -220,7 +243,8 @@ class PersonalVpnService : VpnService() {
                 splitTunnelMode = "vpn_all_except_selected",
                 splitTunnelRules = emptyList(),
                 profileName = null,
-                protocol = null
+                protocol = null,
+                killSwitchEnabled = false
             )
         }
     }
@@ -249,12 +273,51 @@ class PersonalVpnService : VpnService() {
     // Cleanup
     // -------------------------------------------------------------------------
 
+
+    private fun startWatchdog() {
+        stopWatchdog()
+        consecutiveFailures = 0
+        watchdogExecutor = Executors.newSingleThreadScheduledExecutor()
+        watchdogFuture = watchdogExecutor?.scheduleAtFixedRate({
+            if (!isServiceRunning || core?.isRunning() != true) return@scheduleAtFixedRate
+            runCatching {
+                val address = InetAddress.getByName("8.8.8.8")
+                val isReachable = address.isReachable(3000)
+                if (isReachable) {
+                    consecutiveFailures = 0
+                } else {
+                    consecutiveFailures++
+                    Log.w(TAG, "Watchdog: Ping to 8.8.8.8 failed (failures=$consecutiveFailures)")
+                    if (consecutiveFailures >= 3) {
+                        Log.e(TAG, "Watchdog: Connection lost, initiating reconnect")
+                        mainHandler.post {
+                            errorListener?.invoke("WATCHDOG_TIMEOUT", "Connection lost, please reconnect")
+                            stopVpnTunnel(stopSelfAfter = false)
+                        }
+                    }
+                }
+            }.onFailure { e ->
+                Log.w(TAG, "Watchdog error", e)
+            }
+        }, 15, 10, TimeUnit.SECONDS)
+        Log.i(TAG, "Watchdog started")
+    }
+
+    private fun stopWatchdog() {
+        watchdogFuture?.cancel(true)
+        watchdogFuture = null
+        watchdogExecutor?.shutdownNow()
+        watchdogExecutor = null
+    }
+
     private fun stopVpnTunnel(stopSelfAfter: Boolean = true) {
         Log.i(TAG, "stopVpnTunnel")
         updateStatus(VpnStatus.DISCONNECTING)
+        stopWatchdog()
 
         // Stop core
         core?.stop()
+        core = null
         releaseWakeLock()
 
         isServiceRunning = false
@@ -291,6 +354,20 @@ class PersonalVpnService : VpnService() {
                 Log.w(TAG, "Failed to request tile listening state update", e)
             }
         }
+
+        // Notify Widget
+        runCatching {
+            val intent = android.content.Intent(this, VpnWidgetProvider::class.java).apply {
+                action = android.appwidget.AppWidgetManager.ACTION_APPWIDGET_UPDATE
+            }
+            val ids = android.appwidget.AppWidgetManager.getInstance(application).getAppWidgetIds(
+                android.content.ComponentName(application, VpnWidgetProvider::class.java)
+            )
+            intent.putExtra(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_IDS, ids)
+            sendBroadcast(intent)
+        }.onFailure { e ->
+            Log.w(TAG, "Failed to update widget", e)
+        }
     }
 
     private fun failConnection(code: String, message: String) {
@@ -317,7 +394,7 @@ class PersonalVpnService : VpnService() {
                 ?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "KernelVPN:VpnWakeLock")
                 ?.apply {
                     setReferenceCounted(false)
-                    acquire(4 * 60 * 60 * 1000L)  // 4-hour timeout — prevents OxygenOS killing for indefinite WakeLock
+                    acquire()  // Indefinite acquire to avoid silent drops after 4 hours
                 }
             isWakeLockHeld = wakeLock?.isHeld == true
             Log.i(TAG, "VPN wake lock held=$isWakeLockHeld")
@@ -410,6 +487,7 @@ class PersonalVpnService : VpnService() {
         val splitTunnelMode: String,
         val splitTunnelRules: List<SplitTunnelRuleData>,
         val profileName: String?,
-        val protocol: String?
+        val protocol: String?,
+        val killSwitchEnabled: Boolean
     )
 }

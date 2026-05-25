@@ -93,6 +93,8 @@ export async function connect(profile: VpnProfile): Promise<void> {
       proxyDomains: state.proxyDomains,
       blockedApps: state.blockedApps,
       blockAppsEnabled: state.blockAppsEnabled,
+      killSwitchEnabled: state.killSwitchEnabled,
+      bypassLan: state.bypassLan,
     });
 
     appLogger.info('native-vpn', 'Starting Foreground VPN Service with configuration payload');
@@ -189,6 +191,10 @@ export async function fetchDiagnostics(): Promise<VpnDiagnosticResult | null> {
 
 let _unsubStatus: (() => void) | null = null;
 let _unsubError: (() => void) | null = null;
+let _unsubTraffic: (() => void) | null = null;
+let _lastTrafficUpdate = 0;
+let _lastRx = 0;
+let _lastTx = 0;
 
 /**
  * Start listening for native VPN events.
@@ -218,6 +224,34 @@ export function startListening(): void {
     vpnStore.setStatus('error');
     clearConnectionTimer();
   });
+
+  // Global Traffic Listener for analytics
+  const {NativeModules, NativeEventEmitter} = require('react-native');
+  if (NativeModules.VpnBridgeModule) {
+    const emitter = new NativeEventEmitter(NativeModules.VpnBridgeModule);
+    const sub = emitter.addListener('VpnTrafficStats', (data: {rxBytes: number; txBytes: number}) => {
+      const now = Date.now();
+      const rx = data.rxBytes ?? 0;
+      const tx = data.txBytes ?? 0;
+      
+      // Update store every 5 seconds to reduce state thrashing
+      if (now - _lastTrafficUpdate > 5000) {
+        if (rx > _lastRx || tx > _lastTx) {
+          const diffRx = Math.max(0, rx - _lastRx);
+          const diffTx = Math.max(0, tx - _lastTx);
+          
+          if (diffRx > 0 || diffTx > 0) {
+            const dateStr = new Date().toISOString().split('T')[0];
+            vpnStore.addDailyTraffic(dateStr, diffRx, diffTx);
+          }
+        }
+        _lastRx = rx;
+        _lastTx = tx;
+        _lastTrafficUpdate = now;
+      }
+    });
+    _unsubTraffic = () => sub.remove();
+  }
 }
 
 /**
@@ -226,7 +260,9 @@ export function startListening(): void {
 export function stopListening(): void {
   _unsubStatus?.();
   _unsubError?.();
+  _unsubTraffic?.();
   _unsubStatus = null;
   _unsubError = null;
+  _unsubTraffic = null;
   clearConnectionTimer();
 }

@@ -22,12 +22,13 @@ import {useResolvedTheme, type AppTheme} from '../theme/theme';
 import {
   createXuiPanelClient,
   extractVlessProfilesFromInbounds,
-  normalizePanelSettings,
   summarizeServerStatus,
+  normalizePanelSettings,
   type PanelServerStatus,
 } from '../services/xuiPanelService';
 import {androidHeaderTopPadding} from '../services/layoutService';
 import {appLogger} from '../services/appLogger';
+import {TrafficChart} from '../components/TrafficChart';
 
 interface Props {
   onBack: () => void;
@@ -282,9 +283,22 @@ export function PanelScreen({onBack}: Props): React.JSX.Element {
               </Text>
             </TouchableOpacity>
             <Text style={[styles.title, {color: theme.colors.text}]}>
-              3X-UI Panel
+              Analytics & Panel
             </Text>
             <View style={styles.backButton} />
+          </View>
+
+          <TrafficChart 
+            theme={theme} 
+            data={Object.entries(state.dailyTraffic).map(([date, stats]) => ({date, ...stats}))} 
+          />
+
+          <View style={[styles.metricsGrid, {marginTop: 0}]}>
+            <MetricCard
+              theme={theme}
+              label="Blocked Ads/DNS"
+              value={String(state.blockedAdsCount)}
+            />
           </View>
 
           <View

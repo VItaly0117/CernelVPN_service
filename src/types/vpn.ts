@@ -24,6 +24,16 @@ export type VpnProtocol =
 /**
  * A saved VPN profile, parsed from a protocol link.
  */
+export interface VpnSubscription {
+  id: string;
+  name: string;
+  url: string;
+  updatedAt: number;
+}
+
+/**
+ * A saved VPN profile, parsed from a protocol link.
+ */
 export interface VpnProfile {
   id: string;
   name: string;
@@ -42,6 +52,10 @@ export interface VpnProfile {
   transport?: string;
   /** Security layer: reality, tls, none */
   security?: string;
+  /** Subscription ID if this profile belongs to a subscription */
+  subscriptionId?: string;
+  /** Last recorded ping latency in ms */
+  lastPingMs?: number;
   createdAt: number; // epoch ms
   updatedAt: number; // epoch ms
 }
@@ -98,6 +112,7 @@ export type SplitTunnelRouting = 'direct' | 'proxy';
 export interface SplitTunnelRule {
   packageName: string;
   appName: string;
+  iconBase64?: string;
   routing: SplitTunnelRouting;
   enabled: boolean;
 }
@@ -107,10 +122,13 @@ export interface VpnStartPayload {
   splitTunnelMode: SplitTunnelMode;
   splitTunnelRules: SplitTunnelRule[];
   coreConfigJson: string;
+  killSwitchEnabled: boolean;
+  bypassLan: boolean;
 }
 
 export interface PersistedVpnState {
   savedProfiles: VpnProfile[];
+  serverHistory?: string[];
   activeProfileId: string | null;
   splitTunnelMode: SplitTunnelMode;
   splitTunnelRules: SplitTunnelRule[];
@@ -124,8 +142,15 @@ export interface PersistedVpnState {
   blockAppsEnabled?: boolean;
   lastRulesUpdate: number | null;
   themeMode: import('../theme/theme').ThemeMode;
+  language?: string;
   panelSettings: PanelSettings | null;
+  hasCompletedOnboarding?: boolean;
   persistedErrors?: any[];
+  autoConnect?: boolean;
+  killSwitchEnabled?: boolean;
+  bypassLan?: boolean;
+  blockedAdsCount?: number;
+  dailyTraffic?: Record<string, {rx: number; tx: number}>;
 }
 
 export interface PanelSettings {
@@ -142,6 +167,7 @@ export interface PanelSettings {
 export interface InstalledAppInfo {
   packageName: string;
   appName: string;
+  iconBase64?: string;
 }
 
 /**

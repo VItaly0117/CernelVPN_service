@@ -255,6 +255,9 @@ class VpnBridgeModule(reactContext: ReactApplicationContext) :
                 val map = Arguments.createMap().apply {
                     putString("packageName", app.packageName)
                     putString("appName", app.appName)
+                    if (app.iconBase64 != null) {
+                        putString("iconBase64", app.iconBase64)
+                    }
                 }
                 array.pushMap(map)
             }
@@ -362,6 +365,9 @@ class VpnBridgeModule(reactContext: ReactApplicationContext) :
     override fun invalidate() {
         super.invalidate()
         try {
+            PersonalVpnService.statusListener = null
+            PersonalVpnService.errorListener = null
+            
             networkCallback?.let {
                 val connectivityManager = reactApplicationContext.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as ConnectivityManager
                 connectivityManager.unregisterNetworkCallback(it)

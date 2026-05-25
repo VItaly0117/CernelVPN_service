@@ -1,0 +1,2 @@
+- [User Role](memory/user_role.md) — Primary developer of KernelVPN Android VPN client
+- [Project Overview](memory/project_overview.md) — Comprehensive feature implementation status and architecture

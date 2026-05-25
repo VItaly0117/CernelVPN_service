@@ -50,6 +50,7 @@ describe('singBoxConfig', () => {
       address: ['172.19.0.1/30', 'fdfe:dcba:9876::1/126'],
       mtu: 1500,
       stack: 'mixed',
+      dns_server_address: '172.19.0.2',
     });
     expect(config.outbounds[0]).toMatchObject({
       type: 'vless',

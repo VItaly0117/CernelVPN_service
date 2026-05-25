@@ -279,43 +279,62 @@ class CoreManager(private val service: PersonalVpnService) :
 
     override fun openTun(options: TunOptions): Int {
         return synchronized(this) {
-            closeTun()
+            try {
+                closeTun()
 
-            val builder = service.Builder()
-                .setSession("KernelVPN")
+                val builder = service.Builder()
+                builder.setSession("KernelVPN")
 
-            val mtu = options.getMTU()
-            if (mtu > 0) {
-                builder.setMtu(mtu)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && PersonalVpnService.currentKillSwitchEnabled) {
+                    builder.setBlocking(true)
+                    Log.i(TAG, "VPN Kill Switch (blocking mode) enabled")
+                }
+
+                val mtu = options.getMTU()
+                if (mtu > 0) {
+                    builder.setMtu(mtu)
+                }
+
+                runCatching { addTunAddresses(builder, options.getInet4Address()) }
+                runCatching { addTunAddresses(builder, options.getInet6Address()) }
+
+                val dnsServerAddress = runCatching { options.getDNSServerAddress()?.getValue() }.getOrNull()
+                if (!dnsServerAddress.isNullOrBlank()) {
+                    addDnsServers(builder, dnsServerAddress)
+                } else {
+                    Log.i(TAG, "No DNS server from TunOptions, using virtual gateway fallbacks 172.19.0.2 and fdfe:dcba:9876::2")
+                    builder.addDnsServer("172.19.0.2")
+                    builder.addDnsServer("fdfe:dcba:9876::2")
+                }
+
+                if (options.getAutoRoute()) {
+                    runCatching { addRoutes(builder, options.getInet4RouteAddress()) }
+                    runCatching { addRoutes(builder, options.getInet4RouteRange()) }
+                    runCatching { addRoutes(builder, options.getInet6RouteAddress()) }
+                    runCatching { addRoutes(builder, options.getInet6RouteRange()) }
+                    runCatching { addExcludedRoutes(builder, options.getInet4RouteExcludeAddress()) }
+                    runCatching { addExcludedRoutes(builder, options.getInet6RouteExcludeAddress()) }
+                }
+
+                applyPackageRules(
+                    builder = builder,
+                    includePackages = runCatching { options.getIncludePackage().toList() }.getOrDefault(emptyList()),
+                    excludePackages = runCatching { options.getExcludePackage().toList() }.getOrDefault(emptyList())
+                )
+                applyUnderlyingNetworks(builder)
+
+                tunInterface = builder.establish()
+                    ?: throw IllegalStateException("Android VpnService.Builder.establish() returned null")
+
+                val fd = tunInterface?.fd
+                    ?: throw IllegalStateException("Android TUN fd is unavailable")
+                Log.i(TAG, "Android TUN established for libbox, fd=$fd")
+                fd
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in openTun", e)
+                closeTun()
+                throw e
             }
-
-            addTunAddresses(builder, options.getInet4Address())
-            addTunAddresses(builder, options.getInet6Address())
-            addDnsServers(builder, options.getDNSServerAddress().getValue())
-
-            if (options.getAutoRoute()) {
-                addRoutes(builder, options.getInet4RouteAddress())
-                addRoutes(builder, options.getInet4RouteRange())
-                addRoutes(builder, options.getInet6RouteAddress())
-                addRoutes(builder, options.getInet6RouteRange())
-                addExcludedRoutes(builder, options.getInet4RouteExcludeAddress())
-                addExcludedRoutes(builder, options.getInet6RouteExcludeAddress())
-            }
-
-            applyPackageRules(
-                builder = builder,
-                includePackages = options.getIncludePackage().toList(),
-                excludePackages = options.getExcludePackage().toList()
-            )
-            applyUnderlyingNetworks(builder)
-
-            tunInterface = builder.establish()
-                ?: throw IllegalStateException("Android VpnService.Builder.establish() returned null")
-
-            val fd = tunInterface?.fd
-                ?: throw IllegalStateException("Android TUN fd is unavailable")
-            Log.i(TAG, "Android TUN established for libbox, fd=$fd")
-            fd
         }
     }
 
@@ -443,7 +462,10 @@ class CoreManager(private val service: PersonalVpnService) :
             ?.split(',', ';', ' ', '\n', '\t')
             ?.map { it.trim() }
             ?.filter { it.isNotEmpty() }
-            ?.forEach { builder.addDnsServer(it) }
+            ?.forEach { ip ->
+                runCatching { builder.addDnsServer(ip) }
+                    .onFailure { Log.w(TAG, "Failed to add DNS server: $ip", it) }
+            }
     }
 
     private fun applyPackageRules(
@@ -466,42 +488,22 @@ class CoreManager(private val service: PersonalVpnService) :
     }
 
     private fun applyUnderlyingNetworks(builder: VpnService.Builder) {
-        val underlyingNetworks = findUnderlyingNetworks()
-        lastUnderlyingNetworkCount = underlyingNetworks.size
+        lastUnderlyingNetworkCount = 0
         lastUnderlyingNetworkError = null
-
-        if (underlyingNetworks.isEmpty()) {
-            val message = "No underlying Wi-Fi/cellular network found for Android VPN builder"
-            lastUnderlyingNetworkError = message
-            Log.w(TAG, message)
-            return
-        }
-
-        builder.setUnderlyingNetworks(underlyingNetworks.toTypedArray())
+        builder.setUnderlyingNetworks(null)
     }
 
     private fun updateUnderlyingNetworks(reason: String) {
-        val underlyingNetworks = findUnderlyingNetworks()
-        lastUnderlyingNetworkCount = underlyingNetworks.size
+        lastUnderlyingNetworkCount = 0
         lastUnderlyingNetworkError = null
 
-        if (underlyingNetworks.isEmpty()) {
-            val message = "No underlying Wi-Fi/cellular network found during $reason"
-            lastUnderlyingNetworkError = message
-            Log.w(TAG, message)
-            return
-        }
-
         runCatching {
-            service.setUnderlyingNetworks(underlyingNetworks.toTypedArray())
-            Log.d(
-                TAG,
-                "Updated Android VPN underlying networks during $reason: count=${underlyingNetworks.size}"
-            )
+            service.setUnderlyingNetworks(null)
+            Log.d(TAG, "Cleared Android VPN underlying networks (auto-routing) during $reason")
         }.onFailure { error ->
             val message = error.message ?: error.javaClass.simpleName
             lastUnderlyingNetworkError = message
-            Log.w(TAG, "Failed to update Android VPN underlying networks during $reason", error)
+            Log.w(TAG, "Failed to clear Android VPN underlying networks during $reason", error)
         }
     }
 

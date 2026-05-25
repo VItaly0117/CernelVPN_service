@@ -16,6 +16,7 @@ import {
   Clipboard,
   StatusBar as NativeStatusBar,
   Animated,
+  AppState,
 } from 'react-native';
 import {
   fetchDiagnostics,
@@ -103,6 +104,19 @@ export function DiagnosticsScreen({onBack}: Props): React.JSX.Element {
       setLoading(false);
     }
   }, []);
+
+  // Auto-refresh when returning from background (e.g. from Battery Settings)
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (nextAppState === 'active') {
+        handleRefresh();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [handleRefresh]);
 
   const handleBatterySettings = useCallback(async () => {
     try {
@@ -766,6 +780,26 @@ function NetworkTab({
 }): React.JSX.Element {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const isConnected = diagnostics?.serviceRunning && diagnostics?.coreRunning;
+  const [leakIp, setLeakIp] = useState<string | null>(null);
+  const [leakLoading, setLeakLoading] = useState(false);
+
+  const runLeakTest = async () => {
+    setLeakLoading(true);
+    setLeakIp(null);
+    try {
+      const res = await fetch('https://dns.google/resolve?name=whoami.akamai.net&type=A');
+      const data = await res.json();
+      if (data && data.Answer && data.Answer.length > 0) {
+        setLeakIp(data.Answer[0].data);
+      } else {
+        setLeakIp('Failed to resolve IP');
+      }
+    } catch (e) {
+      setLeakIp('Network error');
+    } finally {
+      setLeakLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (isConnected) {
@@ -942,6 +976,65 @@ function NetworkTab({
           </Text>
         </View>
       )}
+
+      {/* DNS Leak Test */}
+      <View
+        style={[
+          styles.networkCard,
+          {
+            backgroundColor: theme.isDark
+              ? 'rgba(255,255,255,0.03)'
+              : theme.colors.surface,
+            borderColor: theme.colors.separator,
+          },
+        ]}>
+        <Text
+          style={[
+            styles.networkSectionTitle,
+            {color: theme.colors.secondaryText, fontFamily: theme.fonts.semiBold},
+          ]}>
+          DNS Leak Test
+        </Text>
+        <Text
+          style={[
+            styles.dnsNote,
+            {color: theme.colors.tertiaryText, fontFamily: theme.fonts.regular, marginBottom: 10},
+          ]}>
+          Find out which IP address your DNS requests are originating from. If it matches your VPN IP, your DNS is secure.
+        </Text>
+        
+        {leakIp && (
+          <View style={{marginBottom: 10, padding: 10, backgroundColor: theme.colors.primarySoft, borderRadius: 8}}>
+            <Text style={{color: theme.colors.primary, fontFamily: theme.fonts.bold, fontSize: 13}}>
+              Detected DNS IP:
+            </Text>
+            <Text style={{color: theme.colors.text, fontFamily: theme.fonts.mono, fontSize: 16, marginTop: 4}}>
+              {leakIp}
+            </Text>
+          </View>
+        )}
+
+        <TouchableOpacity
+          style={[
+            styles.exportButton,
+            {
+              backgroundColor: 'transparent',
+              borderWidth: 1,
+              borderColor: theme.colors.primary,
+            },
+          ]}
+          onPress={runLeakTest}
+          disabled={leakLoading}
+          activeOpacity={0.82}>
+          <Text
+            style={[
+              styles.exportButtonText,
+              {color: theme.colors.primary, fontFamily: theme.fonts.bold},
+            ]}>
+            {leakLoading ? '⏳ Testing...' : '🔍 Run DNS Leak Test'}
+          </Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Export Buttons */}
       <View style={styles.networkActions}>

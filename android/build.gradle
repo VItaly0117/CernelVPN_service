@@ -26,6 +26,12 @@ allprojects {
         mavenCentral()
         maven { url = uri("https://www.jitpack.io") }
     }
+    configurations.all {
+        resolutionStrategy {
+            force 'androidx.core:core:1.15.0'
+            force 'androidx.core:core-ktx:1.15.0'
+        }
+    }
 }
 
 apply plugin: "com.facebook.react.rootproject"

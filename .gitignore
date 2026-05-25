@@ -40,3 +40,4 @@ buck-out/
 
 # AI
 .gemini/
+*.apk

@@ -1,5 +1,13 @@
-import React, { useEffect, useRef } from 'react';
-import { StyleSheet, View, Animated, Easing } from 'react-native';
+import React, { useEffect } from 'react';
+import { StyleSheet, View } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withTiming,
+  withSequence,
+  Easing,
+} from 'react-native-reanimated';
 import type { VpnStatus } from '../types/vpn';
 
 interface AnimatedShieldProps {
@@ -7,192 +15,110 @@ interface AnimatedShieldProps {
 }
 
 export const AnimatedShield: React.FC<AnimatedShieldProps> = ({ status }) => {
-  // Pulse animations
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const rotateAnim = useRef(new Animated.Value(0)).current;
+  const pulseScale = useSharedValue(1);
+  const ringRotation = useSharedValue(0);
 
-  // Particle animations
-  const particles = useRef(
-    Array.from({ length: 8 }).map(() => ({
-      y: new Animated.Value(0),
-      x: Math.random() * 120 - 60, // random offset
-      scale: Math.random() * 0.5 + 0.5,
-      delay: Math.random() * 2000,
-    }))
-  ).current;
-
-  // Status-based parameters
   const isConnected = status === 'connected';
   const isConnecting = status === 'connecting' || status === 'disconnecting';
   const isError = status === 'error';
   const isWarning = status === 'permission_required';
 
-  // Get status color
   const getThemeColor = () => {
-    if (isConnected) return '#D946EF'; // Electric Violet
-    if (isConnecting) return '#8B5CF6'; // Midnight Indigo
-    if (isError) return '#FF1744'; // Hot Pink / Red
-    if (isWarning) return '#FFAB00'; // Warm Amber
-    return '#5C6370'; // Deep Slate Grey
+    if (isConnected) return '#00E676';
+    if (isConnecting) return '#8B5CF6';
+    if (isError) return '#FF1744';
+    if (isWarning) return '#FFAB00';
+    return '#8B5CF6';
   };
 
   const getGlowColor = () => {
-    if (isConnected) return 'rgba(217, 70, 239, 0.25)';
+    if (isConnected) return 'rgba(0, 230, 118, 0.4)';
     if (isConnecting) return 'rgba(139, 92, 246, 0.25)';
     if (isError) return 'rgba(255, 23, 68, 0.25)';
     if (isWarning) return 'rgba(255, 171, 0, 0.25)';
-    return 'rgba(92, 99, 112, 0.15)';
+    return 'rgba(139, 92, 246, 0.2)';
   };
 
   const color = getThemeColor();
   const glowColor = getGlowColor();
 
-  // Handle continuous rotation and pulsing
   useEffect(() => {
-    // Pulse animation loop
-    let duration = 2000;
-    if (isConnecting) duration = 1000;
-    if (isConnected) duration = 1600;
+    // 1. Breathing pulse
+    if (status === 'disconnected') {
+      pulseScale.value = withRepeat(
+        withSequence(
+          withTiming(1.18, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
+          withTiming(1.0, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
+        ),
+        -1,
+        true,
+      );
+    } else if (isConnecting) {
+      pulseScale.value = withRepeat(
+        withSequence(
+          withTiming(1.28, { duration: 500, easing: Easing.inOut(Easing.ease) }),
+          withTiming(1.0, { duration: 500, easing: Easing.inOut(Easing.ease) }),
+        ),
+        -1,
+        true,
+      );
+    } else if (isConnected) {
+      // Stable strong green glow — no pulsing
+      pulseScale.value = withTiming(1.15, { duration: 600 });
+    } else {
+      pulseScale.value = withRepeat(
+        withSequence(
+          withTiming(1.2, { duration: 800, easing: Easing.inOut(Easing.ease) }),
+          withTiming(1.0, { duration: 800, easing: Easing.inOut(Easing.ease) }),
+        ),
+        -1,
+        true,
+      );
+    }
 
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.25,
-          duration: duration / 2,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: duration / 2,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ])
-    );
+    // 2. Outer ring rotation
+    if (isConnecting) {
+      ringRotation.value = withRepeat(
+        withTiming(360, { duration: 1500, easing: Easing.linear }),
+        -1,
+        false,
+      );
+    } else {
+      ringRotation.value = withTiming(0, { duration: 600 });
+    }
+  }, [status, isConnecting, isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Rotation loop
-    const rotation = Animated.loop(
-      Animated.timing(rotateAnim, {
-        toValue: 1,
-        duration: isConnecting ? 3000 : 8000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
-    );
+  const pulseStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: pulseScale.value }],
+  }));
 
-    pulse.start();
-    rotation.start();
-
-    return () => {
-      pulse.stop();
-      rotation.stop();
+  const ringStyle = useAnimatedStyle(() => {
+    const scale = status === 'disconnected' || isConnecting ? pulseScale.value : 1;
+    return {
+      transform: [
+        { rotate: `${ringRotation.value}deg` },
+        { scale },
+      ],
     };
-  }, [status, isConnecting, isConnected, pulseAnim, rotateAnim]);
-
-  // Particle flow loop
-  useEffect(() => {
-    const particleAnims = particles.map((p) => {
-      p.y.setValue(0);
-      let duration = 2500 + Math.random() * 1000;
-      if (isConnecting) duration = 1200 + Math.random() * 400;
-      if (isConnected) duration = 1800 + Math.random() * 600;
-
-      const triggerAnimation = () => {
-        p.y.setValue(0);
-        Animated.timing(p.y, {
-          toValue: 1,
-          duration: duration,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        }).start(({ finished }) => {
-          if (finished && status !== 'disconnected') {
-            triggerAnimation();
-          }
-        });
-      };
-
-      // Initial start with delay
-      const timeout = setTimeout(() => {
-        if (status !== 'disconnected') {
-          triggerAnimation();
-        }
-      }, p.delay);
-
-      return {
-        stop: () => {
-          clearTimeout(timeout);
-          p.y.stopAnimation();
-        },
-      };
-    });
-
-    return () => {
-      particleAnims.forEach(anim => anim.stop());
-    };
-  }, [status, isConnecting, isConnected, particles]);
-
-  // Rotate interpolation
-  const rotate = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
   });
 
   return (
     <View style={styles.container}>
-      {/* Dynamic Background Particle Flow */}
-      <View style={styles.particleContainer}>
-        {status !== 'disconnected' &&
-          particles.map((p, index) => {
-            const translateY = p.y.interpolate({
-              inputRange: [0, 1],
-              outputRange: [120, -120], // Flow upwards
-            });
-            const opacity = p.y.interpolate({
-              inputRange: [0, 0.2, 0.8, 1],
-              outputRange: [0, 0.7, 0.7, 0],
-            });
-
-            return (
-              <Animated.View
-                key={index}
-                style={[
-                  styles.particle,
-                  {
-                    left: 70 + p.x,
-                    backgroundColor: color,
-                    shadowColor: color,
-                    transform: [
-                      { translateY },
-                      { scale: p.scale },
-                    ],
-                    opacity,
-                  },
-                ]}
-              />
-            );
-          })}
-      </View>
-
       {/* Pulse Glow Layer */}
       <Animated.View
         style={[
           styles.glowRing,
-          {
-            borderColor: glowColor,
-            transform: [{ scale: pulseAnim }],
-          },
+          { borderColor: glowColor },
+          pulseStyle,
         ]}
       />
 
-      {/* Outer Rotating Shield Rings */}
+      {/* Outer Rotating Shield Ring */}
       <Animated.View
         style={[
           styles.outerRing,
-          {
-            borderColor: color,
-            transform: [{ rotate }],
-          },
+          { borderColor: color },
+          ringStyle,
         ]}>
         <View style={[styles.ringNotch, { backgroundColor: color }]} />
         <View style={[styles.ringNotchBottom, { backgroundColor: color }]} />
@@ -201,7 +127,6 @@ export const AnimatedShield: React.FC<AnimatedShieldProps> = ({ status }) => {
       {/* Main Shield Shape */}
       <View style={[styles.shieldOuter, { borderColor: color, shadowColor: color }]}>
         <View style={[styles.shieldCore, { backgroundColor: color }]}>
-          {/* Inner Lock Icon */}
           <View style={styles.lockContainer}>
             <View
               style={[
@@ -236,23 +161,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginVertical: 20,
-  },
-  particleContainer: {
-    position: 'absolute',
-    width: 140,
-    height: 240,
-    overflow: 'hidden',
-  },
-  particle: {
-    position: 'absolute',
-    bottom: 0,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 4,
-    elevation: 3,
   },
   glowRing: {
     position: 'absolute',
@@ -292,7 +200,7 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#0F121B', // Deep Slate
+    backgroundColor: '#0F121B',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 10,

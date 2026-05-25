@@ -3,6 +3,28 @@ import type {
   SplitTunnelRule,
   VpnProfile,
 } from '../types/vpn';
+import {appLogger} from './appLogger';
+
+// Pre-defined list of Russian apps that should bypass the VPN
+const RU_BYPASS_PACKAGES = [
+  'ru.sberbankmobile', // Sberbank
+  'com.idamob.tinkoff.android', // Tinkoff
+  'ru.vtb.invest', // VTB Invest
+  'ru.vtb.msa', // VTB
+  'ru.yandex.searchplugin', // Yandex
+  'ru.yandex.maps', // Yandex Maps
+  'ru.yandex.taxi', // Yandex Go
+  'ru.yandex.market', // Yandex Market
+  'ru.mail.mailapp', // Mail.ru
+  'ru.vk.store', // RuStore
+  'com.vkontakte.android', // VK
+  'ru.gosuslugi.app', // Gosuslugi
+  'ru.fns.app', // Nalogi (FNS)
+  'ru.ozon.app.android', // Ozon
+  'com.wildberries.ru', // Wildberries
+  'ru.avito.android', // Avito
+  'ru.wb.app', // WB (new)
+];
 
 export interface SingBoxConfig {
   log: {
@@ -50,6 +72,7 @@ export function buildSingBoxConfig({
   proxyDomains = [],
   blockedApps = [],
   blockAppsEnabled = false,
+  bypassLan = false,
 }: {
   profile: VpnProfile;
   splitTunnelMode: SplitTunnelMode;
@@ -60,6 +83,7 @@ export function buildSingBoxConfig({
   proxyDomains?: string[];
   blockedApps?: string[];
   blockAppsEnabled?: boolean;
+  bypassLan?: boolean;
 }): SingBoxConfig {
   return {
     log: {
@@ -91,6 +115,11 @@ export function buildSingBoxConfig({
               address: 'https://1.1.1.1/dns-query',
               detour: 'proxy',
             },
+            {
+              tag: 'bootstrap-dns',
+              address: '8.8.8.8',
+              detour: 'direct',
+            },
           ],
       final: adBlockEnabled ? 'adguard-doh' : 'google-doh',
       strategy: 'prefer_ipv4',
@@ -118,6 +147,7 @@ export function buildSingBoxConfig({
         proxyDomains,
         blockedApps,
         blockAppsEnabled,
+        bypassLan,
       ),
       final: 'proxy',
     },
@@ -134,6 +164,7 @@ export function buildSingBoxConfigJson(input: {
   proxyDomains?: string[];
   blockedApps?: string[];
   blockAppsEnabled?: boolean;
+  bypassLan?: boolean;
 }): string {
   return JSON.stringify(buildSingBoxConfig(input));
 }
@@ -150,9 +181,9 @@ function buildTunInbound(
       type: 'tun',
       tag: 'tun-in',
       address: buildTunAddresses(),
-      mtu: 1500,
+      mtu: 9000,
       auto_route: true,
-      strict_route: false,
+      strict_route: true,
       stack: 'mixed',
       platform: {
         http_proxy: {
@@ -166,7 +197,7 @@ function buildTunInbound(
     type: 'tun',
     tag: 'tun-in',
     address: buildTunAddresses(),
-    mtu: 1500,
+    mtu: 1400,
     auto_route: true,
     strict_route: false,
     stack: 'mixed',
@@ -182,7 +213,6 @@ function buildTunInbound(
       splitTunnelRules
         .filter(rule => rule.enabled)
         .map(rule => rule.packageName)
-        .concat(appPackageName)
         .concat(blockAppsEnabled ? blockedApps : []),
     );
     if (includePackages.length > 0) {
@@ -193,13 +223,9 @@ function buildTunInbound(
     const excludePackages = uniqueStrings(
       splitTunnelRules
         .filter(rule => rule.enabled)
-        .map(rule => rule.packageName)
-        .concat(appPackageName),
+        .map(rule => rule.packageName),
     ).filter(pkg => {
-      // Don't exclude the app if we want to block it, except our own app package!
-      if (pkg === appPackageName) {
-        return true;
-      }
+      // Don't exclude the app if we want to block it
       return !(blockAppsEnabled && blockedApps.includes(pkg));
     });
     if (excludePackages.length > 0) {
@@ -226,7 +252,7 @@ function buildProxyOutbound(profile: VpnProfile): Record<string, unknown> {
 }
 
 function buildTunAddresses(): string[] {
-  return ['172.19.0.1/30', 'fdfe:dcba:9876::1/126'];
+  return ['172.19.0.1/30'];
 }
 
 function buildRouteRules(
@@ -235,6 +261,7 @@ function buildRouteRules(
   proxyDomains: string[] = [],
   blockedApps: string[] = [],
   blockAppsEnabled = false,
+  bypassLan = false,
 ): Array<Record<string, unknown>> {
   const rules: Array<Record<string, unknown>> = [
     {
@@ -259,9 +286,30 @@ function buildRouteRules(
     });
   }
 
+  // Built-in routing for Russian apps to bypass the VPN proxy directly via sing-box
+  if (RU_BYPASS_PACKAGES.length > 0) {
+    rules.push({
+      package_name: RU_BYPASS_PACKAGES,
+      outbound: 'direct',
+    });
+  }
+
   if (bypassDomains.length > 0) {
     rules.push({
       domain: bypassDomains,
+      outbound: 'direct',
+    });
+  }
+
+  if (bypassLan) {
+    rules.push({
+      ip_cidr: [
+        '192.168.0.0/16',
+        '10.0.0.0/8',
+        '172.16.0.0/12',
+        'fc00::/7',
+        'fe80::/10'
+      ],
       outbound: 'direct',
     });
   }
@@ -299,8 +347,8 @@ function buildVlessOutbound(profile: VpnProfile): Record<string, unknown> {
     server_port: profile.port,
     uuid: profile.uuid,
     flow: profile.flow,
-    network: normalizeNetwork(profile.transport),
     packet_encoding: 'xudp',
+    tcp_fast_open: true,
     tls: buildTlsConfig(profile),
     transport: buildTransportConfig(profile),
   });
@@ -316,7 +364,9 @@ function buildVmessOutbound(profile: VpnProfile): Record<string, unknown> {
     server: profile.host,
     server_port: profile.port,
     uuid: profile.uuid,
-    security: 'auto',
+    security: profile.security || 'auto',
+    packet_encoding: 'xudp',
+    tcp_fast_open: true,
     tls: buildTlsConfig(profile),
     transport: buildTransportConfig(profile),
   });
@@ -332,6 +382,7 @@ function buildTrojanOutbound(profile: VpnProfile): Record<string, unknown> {
     server: profile.host,
     server_port: profile.port,
     password: profile.password,
+    tcp_fast_open: true,
     tls: buildTlsConfig(profile, true),
     transport: buildTransportConfig(profile),
   });
@@ -346,8 +397,9 @@ function buildShadowsocksOutbound(profile: VpnProfile): Record<string, unknown> 
     tag: 'proxy',
     server: profile.host,
     server_port: profile.port,
-    method: profile.method,
+    method: profile.method || 'aes-256-gcm',
     password: profile.password,
+    tcp_fast_open: true,
   };
 }
 
@@ -397,13 +449,6 @@ function buildTransportConfig(
     default:
       return {type: profile.transport};
   }
-}
-
-function normalizeNetwork(transport: string | undefined): string {
-  if (!transport || transport === 'tcp') {
-    return 'tcp';
-  }
-  return transport === 'grpc' || transport === 'ws' ? 'tcp' : transport;
 }
 
 function removeEmptyValues<T extends Record<string, unknown>>(input: T): T {

@@ -13,7 +13,10 @@ class VpnBridgePackage : ReactPackage {
     override fun createNativeModules(
         reactContext: ReactApplicationContext
     ): List<NativeModule> {
-        return listOf(VpnBridgeModule(reactContext))
+        return listOf(
+            VpnBridgeModule(reactContext),
+            com.personalvpn.utils.AppIconManagerModule(reactContext)
+        )
     }
 
     override fun createViewManagers(

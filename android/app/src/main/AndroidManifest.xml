@@ -1,6 +1,4 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
-    <!-- VPN permission — required for VpnService -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -8,7 +6,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <!-- Query installed apps for split tunneling -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
@@ -26,21 +25,34 @@
         android:usesCleartextTraffic="false"
         android:supportsRtl="true"
         android:networkSecurityConfig="@xml/network_security_config">
-
         <activity
             android:name=".MainActivity"
             android:label="@string/app_name"
             android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
             android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize"
-            android:exported="true">
+            android:exported="true"
+            android:theme="@style/BootTheme">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <!-- VPN Service -->
+        <activity-alias
+            android:name=".MainActivityCalculator"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:label="Calculator"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
         <service
             android:name=".vpn.PersonalVpnService"
             android:permission="android.permission.BIND_VPN_SERVICE"
@@ -49,10 +61,11 @@
             <intent-filter>
                 <action android:name="android.net.VpnService" />
             </intent-filter>
-            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="vpn"/>
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="vpn" />
         </service>
 
-        <!-- Quick Settings Tile Service -->
         <service
             android:name=".vpn.VpnTileService"
             android:icon="@drawable/ic_vpn_key"
@@ -64,6 +77,15 @@
             </intent-filter>
         </service>
 
+        <receiver
+            android:name=".vpn.VpnWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/vpn_widget_info" />
+        </receiver>
     </application>
-
 </manifest>

@@ -1,8 +1,17 @@
 import {useColorScheme} from 'react-native';
 import type {VpnStatus} from '../types/vpn';
 
-export type ThemeMode = 'system' | 'light' | 'dark';
-export type ResolvedTheme = 'light' | 'dark';
+export type ThemeMode = 'system' | 'light' | 'dark' | 'amoled';
+export type ResolvedTheme = 'light' | 'dark' | 'amoled';
+
+export interface AppFonts {
+  regular: string;
+  medium: string;
+  semiBold: string;
+  bold: string;
+  extraBold: string;
+  mono: string;
+}
 
 export interface AppTheme {
   mode: ResolvedTheme;
@@ -28,14 +37,7 @@ export interface AppTheme {
     shadow: string;
     accentGlow: string;
   };
-  fonts: {
-    regular: string;
-    medium: string;
-    semiBold: string;
-    bold: string;
-    extraBold: string;
-    mono: string;
-  };
+  fonts: AppFonts;
   radius: {
     sm: number;
     md: number;
@@ -62,7 +64,45 @@ export function resolveThemeMode(
 }
 
 export function getTheme(mode: ResolvedTheme): AppTheme {
-  const isDark = mode === 'dark';
+  const isDark = mode === 'dark' || mode === 'amoled';
+
+  if (mode === 'amoled') {
+    return {
+      mode,
+      isDark: true,
+      colors: {
+        background: '#000000',
+        surface: '#090909',
+        elevated: '#111111',
+        text: '#F0F2F5',
+        secondaryText: '#8899AA',
+        tertiaryText: '#556677',
+        separator: '#181818',
+        primary: '#8B5CF6',
+        primarySoft: '#130D22',
+        secondary: '#D946EF',
+        secondarySoft: '#1A0820',
+        success: '#00E676',
+        successSoft: '#001A0D',
+        warning: '#FFAB00',
+        warningSoft: '#1A1200',
+        danger: '#FF1744',
+        dangerSoft: '#1A0008',
+        shadow: '#000000',
+        accentGlow: 'rgba(139, 92, 246, 0.2)',
+      },
+      fonts: {
+        regular: 'Play-Regular',
+        medium: 'Play-Regular',
+        semiBold: 'Play-Bold',
+        bold: 'Play-Bold',
+        extraBold: 'Play-Bold',
+        mono: 'Play-Regular',
+      },
+      radius: {sm: 8, md: 12, lg: 16, xl: 22},
+      spacing: {xs: 6, sm: 10, md: 16, lg: 22, xl: 28},
+    };
+  }
 
   return {
     mode,
@@ -111,26 +151,15 @@ export function getTheme(mode: ResolvedTheme): AppTheme {
           accentGlow: 'rgba(124, 58, 237, 0.08)',
         },
     fonts: {
-      regular: 'Inter-Regular',
-      medium: 'Inter-Medium',
-      semiBold: 'Inter-SemiBold',
-      bold: 'Inter-Bold',
-      extraBold: 'Inter-ExtraBold',
-      mono: 'monospace',
+      regular: 'Play-Regular',
+      medium: 'Play-Regular',
+      semiBold: 'Play-Bold',
+      bold: 'Play-Bold',
+      extraBold: 'Play-Bold',
+      mono: 'Play-Regular',
     },
-    radius: {
-      sm: 8,
-      md: 12,
-      lg: 16,
-      xl: 22,
-    },
-    spacing: {
-      xs: 6,
-      sm: 10,
-      md: 16,
-      lg: 22,
-      xl: 28,
-    },
+    radius: {sm: 8, md: 12, lg: 16, xl: 22},
+    spacing: {xs: 6, sm: 10, md: 16, lg: 22, xl: 28},
   };
 }
 
@@ -156,5 +185,6 @@ export function getStatusColors(
 
 export function useResolvedTheme(mode: ThemeMode): AppTheme {
   const systemScheme = useColorScheme();
-  return getTheme(resolveThemeMode(mode, systemScheme));
+  const resolved = resolveThemeMode(mode, systemScheme);
+  return getTheme(resolved);
 }

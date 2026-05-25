@@ -21,6 +21,7 @@ export function serializeVpnState(state: PersistedVpnState): string {
   return JSON.stringify({
     version: PERSISTED_STATE_VERSION,
     savedProfiles: state.savedProfiles,
+    serverHistory: state.serverHistory,
     activeProfileId: state.activeProfileId,
     splitTunnelMode: state.splitTunnelMode,
     splitTunnelRules: state.splitTunnelRules,
@@ -36,6 +37,12 @@ export function serializeVpnState(state: PersistedVpnState): string {
     themeMode: state.themeMode,
     panelSettings: state.panelSettings,
     persistedErrors: state.persistedErrors,
+    hasCompletedOnboarding: state.hasCompletedOnboarding,
+    autoConnect: state.autoConnect,
+    killSwitchEnabled: state.killSwitchEnabled,
+    bypassLan: state.bypassLan,
+    blockedAdsCount: state.blockedAdsCount,
+    dailyTraffic: state.dailyTraffic,
   });
 }
 
@@ -60,6 +67,9 @@ export function parsePersistedVpnState(
   const record = parsed as Record<string, unknown>;
   const savedProfiles = Array.isArray(record.savedProfiles)
     ? record.savedProfiles.filter(isVpnProfile)
+    : [];
+  const serverHistory = Array.isArray(record.serverHistory)
+    ? record.serverHistory.filter((id) => typeof id === 'string')
     : [];
   const splitTunnelRules = Array.isArray(record.splitTunnelRules)
     ? record.splitTunnelRules.filter(isSplitTunnelRule)
@@ -114,9 +124,34 @@ export function parsePersistedVpnState(
   const persistedErrors = Array.isArray(record.persistedErrors)
     ? record.persistedErrors
     : [];
+  const hasCompletedOnboarding =
+    typeof record.hasCompletedOnboarding === 'boolean'
+      ? record.hasCompletedOnboarding
+      : false;
+  const autoConnect =
+    typeof record.autoConnect === 'boolean'
+      ? record.autoConnect
+      : false;
+  const killSwitchEnabled =
+    typeof record.killSwitchEnabled === 'boolean'
+      ? record.killSwitchEnabled
+      : false;
+  const bypassLan =
+    typeof record.bypassLan === 'boolean'
+      ? record.bypassLan
+      : false;
+  const blockedAdsCount =
+    typeof record.blockedAdsCount === 'number'
+      ? record.blockedAdsCount
+      : 0;
+  const dailyTraffic =
+    typeof record.dailyTraffic === 'object' && record.dailyTraffic !== null
+      ? (record.dailyTraffic as Record<string, {rx: number; tx: number}>)
+      : {};
 
   return {
     savedProfiles,
+    serverHistory,
     activeProfileId,
     splitTunnelMode,
     splitTunnelRules,
@@ -132,6 +167,12 @@ export function parsePersistedVpnState(
     themeMode,
     panelSettings,
     persistedErrors,
+    hasCompletedOnboarding,
+    autoConnect,
+    killSwitchEnabled,
+    bypassLan,
+    blockedAdsCount,
+    dailyTraffic,
   };
 }
 

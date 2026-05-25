@@ -11,14 +11,16 @@
  *   Currently in-memory only.
  *   TODO: Persist to AsyncStorage / MMKV when available.
  */
-import type {
-  VpnStatus,
+import {
   VpnProfile,
+  VpnStatus,
   SplitTunnelMode,
   SplitTunnelRule,
-  PersistedVpnState,
+  VpnSubscription,
   PanelSettings,
+  LogEvent,
 } from '../types/vpn';
+import i18n from '../locales/i18n';
 import type {ThemeMode} from '../theme/theme';
 import {DEFAULT_BYPASS_DOMAINS} from '../services/routingDefaults';
 
@@ -38,6 +40,8 @@ export interface VpnStoreState {
   status: VpnStatus;
   activeProfile: VpnProfile | null;
   savedProfiles: VpnProfile[];
+  serverHistory: string[]; // profile IDs
+  subscriptions: VpnSubscription[];
   splitTunnelMode: SplitTunnelMode;
   splitTunnelRules: SplitTunnelRule[];
   splitTunnelRulesWifi: SplitTunnelRule[];
@@ -51,8 +55,15 @@ export interface VpnStoreState {
   lastError: string | null;
   lastRulesUpdate: number | null; // epoch ms
   themeMode: ThemeMode;
+  language: string;
   panelSettings: PanelSettings | null;
+  hasCompletedOnboarding: boolean;
   persistedErrors: LogEvent[];
+  autoConnect: boolean;
+  killSwitchEnabled: boolean;
+  bypassLan: boolean;
+  blockedAdsCount: number;
+  dailyTraffic: Record<string, {rx: number; tx: number}>;
 }
 
 // ---------------------------------------------------------------------------
@@ -64,6 +75,8 @@ class VpnStore {
     status: 'disconnected',
     activeProfile: null,
     savedProfiles: [],
+    serverHistory: [],
+    subscriptions: [],
     splitTunnelMode: 'vpn_all_except_selected',
     splitTunnelRules: [],
     splitTunnelRulesWifi: [],
@@ -77,8 +90,15 @@ class VpnStore {
     lastError: null,
     lastRulesUpdate: null,
     themeMode: 'system',
+    language: 'en',
     panelSettings: null,
+    hasCompletedOnboarding: true,
     persistedErrors: [],
+    autoConnect: false,
+    killSwitchEnabled: false,
+    bypassLan: false,
+    blockedAdsCount: 0,
+    dailyTraffic: {},
   };
 
   private _listeners: Set<Listener> = new Set();
@@ -115,6 +135,14 @@ class VpnStore {
 
   get savedProfiles(): VpnProfile[] {
     return this._state.savedProfiles;
+  }
+
+  get serverHistory(): string[] {
+    return this._state.serverHistory;
+  }
+
+  get subscriptions(): VpnSubscription[] {
+    return this._state.subscriptions;
   }
 
   get splitTunnelMode(): SplitTunnelMode {
@@ -169,6 +197,10 @@ class VpnStore {
     return this._state.panelSettings;
   }
 
+  get hasCompletedOnboarding(): boolean {
+    return this._state.hasCompletedOnboarding;
+  }
+
   // ---- Setters ----
 
   setStatus(status: VpnStatus): void {
@@ -184,7 +216,11 @@ class VpnStore {
   }
 
   setActiveProfile(profile: VpnProfile | null): void {
-    this._state = {...this._state, activeProfile: profile};
+    let newHistory = this._state.serverHistory;
+    if (profile) {
+      newHistory = [profile.id, ...newHistory.filter(id => id !== profile.id)].slice(0, 5);
+    }
+    this._state = {...this._state, activeProfile: profile, serverHistory: newHistory};
     this._notify();
   }
 
@@ -199,6 +235,15 @@ class VpnStore {
     }
   }
 
+  updateProfile(profile: VpnProfile): void {
+    this._state = {
+      ...this._state,
+      savedProfiles: this._state.savedProfiles.map(p => (p.id === profile.id ? profile : p)),
+      activeProfile: this._state.activeProfile?.id === profile.id ? profile : this._state.activeProfile,
+    };
+    this._notify();
+  }
+
   removeProfile(profileId: string): void {
     this._state = {
       ...this._state,
@@ -207,6 +252,39 @@ class VpnStore {
         this._state.activeProfile?.id === profileId
           ? null
           : this._state.activeProfile,
+    };
+    this._notify();
+  }
+
+  addSubscription(sub: VpnSubscription): void {
+    const exists = this._state.subscriptions.some(s => s.id === sub.id);
+    if (!exists) {
+      this._state = {
+        ...this._state,
+        subscriptions: [...this._state.subscriptions, sub],
+      };
+      this._notify();
+    }
+  }
+
+  updateSubscription(sub: VpnSubscription, profiles: VpnProfile[]): void {
+    this._state = {
+      ...this._state,
+      subscriptions: this._state.subscriptions.map(s => (s.id === sub.id ? sub : s)),
+      // Remove old profiles for this sub, add new ones
+      savedProfiles: [
+        ...this._state.savedProfiles.filter(p => p.subscriptionId !== sub.id),
+        ...profiles,
+      ],
+    };
+    this._notify();
+  }
+
+  removeSubscription(subId: string): void {
+    this._state = {
+      ...this._state,
+      subscriptions: this._state.subscriptions.filter(s => s.id !== subId),
+      savedProfiles: this._state.savedProfiles.filter(p => p.subscriptionId !== subId),
     };
     this._notify();
   }
@@ -305,13 +383,79 @@ class VpnStore {
     this._notify();
   }
 
-  setThemeMode(themeMode: ThemeMode): void {
-    this._state = {...this._state, themeMode};
+  setThemeMode(mode: ThemeMode) {
+    this._state = {...this._state, themeMode: mode};
+    this._notify();
+  }
+
+  setLanguage(lang: string) {
+    this._state = {...this._state, language: lang};
+    i18n.changeLanguage(lang);
+    this._notify();
+  }
+
+  setAutoConnect(value: boolean): void {
+    this._state = {...this._state, autoConnect: value};
+    this._notify();
+  }
+
+  get autoConnect(): boolean {
+    return this._state.autoConnect;
+  }
+
+  setKillSwitchEnabled(value: boolean): void {
+    this._state = {...this._state, killSwitchEnabled: value};
+    this._notify();
+  }
+
+  get killSwitchEnabled(): boolean {
+    return this._state.killSwitchEnabled;
+  }
+
+  setBypassLan(value: boolean): void {
+    this._state = {...this._state, bypassLan: value};
+    this._notify();
+  }
+
+  get bypassLan(): boolean {
+    return this._state.bypassLan;
+  }
+
+  get blockedAdsCount(): number {
+    return this._state.blockedAdsCount;
+  }
+
+  get dailyTraffic(): Record<string, {rx: number; tx: number}> {
+    return this._state.dailyTraffic;
+  }
+
+  incrementBlockedAds(): void {
+    this._state = {...this._state, blockedAdsCount: this._state.blockedAdsCount + 1};
+    this._notify();
+  }
+
+  addDailyTraffic(dateString: string, rx: number, tx: number): void {
+    const current = this._state.dailyTraffic[dateString] || {rx: 0, tx: 0};
+    this._state = {
+      ...this._state,
+      dailyTraffic: {
+        ...this._state.dailyTraffic,
+        [dateString]: {
+          rx: current.rx + rx,
+          tx: current.tx + tx,
+        },
+      },
+    };
     this._notify();
   }
 
   setPanelSettings(panelSettings: PanelSettings | null): void {
     this._state = {...this._state, panelSettings};
+    this._notify();
+  }
+
+  setHasCompletedOnboarding(completed: boolean): void {
+    this._state = {...this._state, hasCompletedOnboarding: completed};
     this._notify();
   }
 
@@ -332,6 +476,7 @@ class VpnStore {
       ...this._state,
       activeProfile,
       savedProfiles: state.savedProfiles,
+      serverHistory: state.serverHistory || [],
       splitTunnelMode: state.splitTunnelMode,
       splitTunnelRules: state.splitTunnelRules,
       splitTunnelRulesWifi: state.splitTunnelRulesWifi || [],
@@ -344,8 +489,15 @@ class VpnStore {
       blockAppsEnabled: state.blockAppsEnabled ?? false,
       lastRulesUpdate: state.lastRulesUpdate,
       themeMode: state.themeMode,
+      language: state.language || 'en',
       panelSettings: state.panelSettings,
+      hasCompletedOnboarding: state.hasCompletedOnboarding ?? true,
       persistedErrors: state.persistedErrors || [],
+      autoConnect: state.autoConnect ?? false,
+      killSwitchEnabled: state.killSwitchEnabled ?? false,
+      bypassLan: state.bypassLan ?? false,
+      blockedAdsCount: state.blockedAdsCount ?? 0,
+      dailyTraffic: state.dailyTraffic ?? {},
     };
     this._notify();
 
@@ -357,6 +509,7 @@ class VpnStore {
   toPersistedState(): PersistedVpnState {
     return {
       savedProfiles: this._state.savedProfiles,
+      serverHistory: this._state.serverHistory,
       activeProfileId: this._state.activeProfile?.id ?? null,
       splitTunnelMode: this._state.splitTunnelMode,
       splitTunnelRules: this._state.splitTunnelRules,
@@ -370,8 +523,15 @@ class VpnStore {
       blockAppsEnabled: this._state.blockAppsEnabled,
       lastRulesUpdate: this._state.lastRulesUpdate,
       themeMode: this._state.themeMode,
+      language: this._state.language,
       panelSettings: this._state.panelSettings,
+      hasCompletedOnboarding: this._state.hasCompletedOnboarding,
       persistedErrors: this._state.persistedErrors,
+      autoConnect: this._state.autoConnect,
+      killSwitchEnabled: this._state.killSwitchEnabled,
+      bypassLan: this._state.bypassLan,
+      blockedAdsCount: this._state.blockedAdsCount,
+      dailyTraffic: this._state.dailyTraffic,
     };
   }
 }

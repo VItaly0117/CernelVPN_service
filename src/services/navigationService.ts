@@ -3,7 +3,11 @@ export type AppScreenName =
   | 'ImportProfile'
   | 'SplitTunneling'
   | 'Diagnostics'
-  | 'Panel';
+  | 'Servers'
+  | 'Panel'
+  | 'Settings'
+  | 'EventLog'
+  | 'QRScanner';
 
 export interface BackNavigationResult {
   handled: boolean;

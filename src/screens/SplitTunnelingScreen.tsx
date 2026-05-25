@@ -16,12 +16,15 @@ import {
   ScrollView,
   Platform,
   StatusBar as NativeStatusBar,
+  Image,
 } from 'react-native';
 import * as NativeVpn from '../native/NativeVpn';
 import {vpnStore, useVpnStore} from '../store/vpnStore';
 import type {SplitTunnelRule, SplitTunnelMode} from '../types/vpn';
 import {useResolvedTheme, type AppTheme} from '../theme/theme';
 import {androidHeaderTopPadding} from '../services/layoutService';
+import {ThreeDotsLoader} from '../components/ThreeDotsLoader';
+import {useTranslation} from 'react-i18next';
 
 interface Props {
   onBack: () => void;
@@ -34,6 +37,7 @@ const HEADER_TOP_PADDING = androidHeaderTopPadding(
 );
 
 export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
+  const { t } = useTranslation();
   const storeState = useVpnStore();
   const theme = useResolvedTheme(storeState.themeMode);
   
@@ -53,6 +57,7 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
     return storeState.splitTunnelRules.map(app => ({
       packageName: app.packageName,
       appName: app.appName,
+      iconBase64: app.iconBase64,
       enabled: (storeState.blockedApps || []).includes(app.packageName),
     }));
   }, [storeState.splitTunnelRules, storeState.blockedApps]);
@@ -81,11 +86,12 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
   );
 
   const renderBlockApp = useCallback(
-    ({item}: {item: {packageName: string; appName: string; enabled: boolean}}) => (
+    ({item}: {item: {packageName: string; appName: string; iconBase64?: string; enabled: boolean}}) => (
       <AppRuleRow
         rule={{
           packageName: item.packageName,
           appName: item.appName,
+          iconBase64: item.iconBase64,
           routing: 'proxy',
           enabled: item.enabled,
         }}
@@ -120,6 +126,7 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
             .map(app => ({
               packageName: app.packageName,
               appName: app.appName,
+              iconBase64: app.iconBase64,
               routing: 'proxy',
               enabled: false,
             }));
@@ -136,6 +143,7 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
             .map(app => ({
               packageName: app.packageName,
               appName: app.appName,
+              iconBase64: app.iconBase64,
               routing: 'proxy',
               enabled: false,
             }));
@@ -152,6 +160,7 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
             .map(app => ({
               packageName: app.packageName,
               appName: app.appName,
+              iconBase64: app.iconBase64,
               routing: 'proxy',
               enabled: false,
             }));
@@ -268,11 +277,11 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
       <View style={styles.headerRow}>
         <TouchableOpacity onPress={onBack} style={styles.backButton}>
           <Text style={[styles.backText, {color: theme.colors.primary}]}>
-            Back
+            {t('common.back', 'Back')}
           </Text>
         </TouchableOpacity>
         <Text style={[styles.title, {color: theme.colors.text}]}>
-          Routing & Filters
+          {t('security.title', 'Routing & Filters')}
         </Text>
         <View style={styles.backButton} />
       </View>
@@ -283,28 +292,28 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
           style={[styles.tabButton, activeTab === 'apps' && {borderBottomColor: theme.colors.primary}]}
           onPress={() => setActiveTab('apps')}>
           <Text style={[styles.tabText, {color: activeTab === 'apps' ? theme.colors.primary : theme.colors.secondaryText, fontFamily: theme.fonts.bold}]}>
-            Apps
+            {t('security.apps', 'Apps')}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tabButton, activeTab === 'appblock' && {borderBottomColor: theme.colors.primary}]}
           onPress={() => setActiveTab('appblock')}>
           <Text style={[styles.tabText, {color: activeTab === 'appblock' ? theme.colors.primary : theme.colors.secondaryText, fontFamily: theme.fonts.bold}]}>
-            App Block
+            {t('security.app_block', 'App Block')}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tabButton, activeTab === 'domains' && {borderBottomColor: theme.colors.primary}]}
           onPress={() => setActiveTab('domains')}>
           <Text style={[styles.tabText, {color: activeTab === 'domains' ? theme.colors.primary : theme.colors.secondaryText, fontFamily: theme.fonts.bold}]}>
-            Domains
+            {t('security.domains', 'Domains')}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tabButton, activeTab === 'settings' && {borderBottomColor: theme.colors.primary}]}
           onPress={() => setActiveTab('settings')}>
           <Text style={[styles.tabText, {color: activeTab === 'settings' ? theme.colors.primary : theme.colors.secondaryText, fontFamily: theme.fonts.bold}]}>
-            Settings
+            {t('security.settings_tab', 'Settings')}
           </Text>
         </TouchableOpacity>
       </View>
@@ -317,10 +326,10 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
             <View style={styles.cardHeader}>
               <View style={styles.cardHeaderInfo}>
                 <Text style={[styles.cardTitle, {color: theme.colors.text, fontFamily: theme.fonts.bold}]}>
-                  🛡️ AdBlocker (DNS DoH)
+                  {t('security.adblocker_title', 'AdBlocker (DNS DoH)')}
                 </Text>
                 <Text style={[styles.cardDesc, {color: theme.colors.secondaryText, fontFamily: theme.fonts.medium}]}>
-                  Block advertisements, banners, and malicious tracking domains globally using secure AdGuard DoH resolvers detour through your VPN. Reduces page load time.
+                  {t('security.adblocker_desc', 'Block advertisements, banners, and malicious tracking domains globally using secure AdGuard DoH resolvers detour through your VPN. Reduces page load time.')}
                 </Text>
               </View>
               <Switch
@@ -340,10 +349,10 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
             <View style={styles.cardHeader}>
               <View style={styles.cardHeaderInfo}>
                 <Text style={[styles.cardTitle, {color: theme.colors.text, fontFamily: theme.fonts.bold}]}>
-                  📶 Network-Aware Routing
+                  {t('security.netaware_title', 'Network-Aware Routing')}
                 </Text>
                 <Text style={[styles.cardDesc, {color: theme.colors.secondaryText, fontFamily: theme.fonts.medium}]}>
-                  Define different app routing rules when on Wi-Fi versus Mobile Data (Cellular). The VPN client automatically reconstructs the tunnel and applies correct rules when switching network connections.
+                  {t('security.netaware_desc', 'Define different app routing rules when on Wi-Fi versus Mobile Data (Cellular). The VPN client automatically reconstructs the tunnel and applies correct rules when switching network connections.')}
                 </Text>
               </View>
               <Switch
@@ -366,7 +375,7 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
           {/* Add custom domain card */}
           <View style={[styles.card, {backgroundColor: theme.colors.surface, borderColor: theme.colors.separator, marginHorizontal: 16, marginTop: 8, padding: 14}]}>
             <Text style={[styles.cardTitle, {color: theme.colors.text, fontFamily: theme.fonts.bold, marginBottom: 8, fontSize: 14}]}>
-              Add Custom Domain Rule
+              {t('security.add_domain_title', 'Add Custom Domain Rule')}
             </Text>
             <View style={styles.addDomainRow}>
               <TextInput
@@ -406,7 +415,7 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
                   }
                   setNewDomainText('');
                 }}>
-                <Text style={styles.addButtonText}>Add</Text>
+                <Text style={styles.addButtonText}>{t('security.btn_add', 'Add')}</Text>
               </TouchableOpacity>
             </View>
             {/* Choose rule category */}
@@ -420,7 +429,7 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
                 activeOpacity={0.78}
                 onPress={() => setNewDomainType('bypass')}>
                 <Text style={[styles.domainTypeBtnText, {color: newDomainType === 'bypass' ? theme.colors.primary : theme.colors.secondaryText, fontFamily: theme.fonts.bold}]}>
-                  Bypass VPN (Direct)
+                  {t('security.bypass_vpn_direct', 'Bypass VPN (Direct)')}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -432,7 +441,7 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
                 activeOpacity={0.78}
                 onPress={() => setNewDomainType('proxy')}>
                 <Text style={[styles.domainTypeBtnText, {color: newDomainType === 'proxy' ? theme.colors.primary : theme.colors.secondaryText, fontFamily: theme.fonts.bold}]}>
-                  Route VPN (Proxy)
+                  {t('security.route_vpn_proxy', 'Route VPN (Proxy)')}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -525,7 +534,7 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
             ]}
             value={query}
             onChangeText={setQuery}
-            placeholder="Search apps to block"
+            placeholder={t('security.search_apps_block')}
             placeholderTextColor={theme.colors.tertiaryText}
             autoCapitalize="none"
             autoCorrect={false}
@@ -533,9 +542,9 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
 
           {loading && (
             <View style={styles.centerBox}>
-              <ActivityIndicator size="large" color={theme.colors.primary} />
+              <ThreeDotsLoader color={theme.colors.primary} />
               <Text style={[styles.loadingText, {color: theme.colors.secondaryText}]}>
-                Loading installed apps…
+                {t('security.loading_apps')}
               </Text>
             </View>
           )}
@@ -620,7 +629,7 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
                   onPress={() => setActiveNetworkTab('wifi')}
                   activeOpacity={0.78}>
                   <Text style={[styles.networkSegmentText, {color: activeNetworkTab === 'wifi' ? '#FFFFFF' : theme.colors.secondaryText, fontFamily: theme.fonts.bold}]}>
-                    📶 Wi-Fi Rules
+                    {t('security.wifi_rules')}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -628,7 +637,7 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
                   onPress={() => setActiveNetworkTab('cellular')}
                   activeOpacity={0.78}>
                   <Text style={[styles.networkSegmentText, {color: activeNetworkTab === 'cellular' ? '#FFFFFF' : theme.colors.secondaryText, fontFamily: theme.fonts.bold}]}>
-                    📶 Mobile Rules
+                    {t('security.mobile_rules')}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -652,7 +661,7 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
             ]}
             value={query}
             onChangeText={setQuery}
-            placeholder="Search apps"
+            placeholder={t('security.search_apps')}
             placeholderTextColor={theme.colors.tertiaryText}
             autoCapitalize="none"
             autoCorrect={false}
@@ -660,9 +669,9 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
 
           {loading && (
             <View style={styles.centerBox}>
-              <ActivityIndicator size="large" color={theme.colors.primary} />
+              <ThreeDotsLoader color={theme.colors.primary} />
               <Text style={[styles.loadingText, {color: theme.colors.secondaryText}]}>
-                Loading installed apps…
+                {t('security.loading_apps')}
               </Text>
             </View>
           )}
@@ -706,12 +715,48 @@ export function SplitTunnelingScreen({onBack}: Props): React.JSX.Element {
   );
 }
 
+function AppIconBadge({appName, theme}: {appName: string; theme: AppTheme}): React.JSX.Element {
+  const firstLetter = appName.trim().substring(0, 1).toUpperCase() || '?';
+  const colors = [
+    theme.colors.primary,
+    theme.colors.secondary,
+    theme.colors.success,
+    '#00E5FF',
+    '#FF1744',
+    '#FFD600',
+    '#AA00FF',
+  ];
+  const colorIndex = appName.length % colors.length;
+  const badgeColor = colors[colorIndex];
+
+  return (
+    <View style={[
+      styles.avatarBadge,
+      {
+        backgroundColor: theme.isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)',
+        borderColor: badgeColor,
+        borderWidth: 1.5,
+      }
+    ]}>
+      <Text style={[
+        styles.avatarText,
+        {
+          color: badgeColor,
+          fontFamily: theme.fonts.bold,
+        }
+      ]}>
+        {firstLetter}
+      </Text>
+    </View>
+  );
+}
+
 const AppRuleRow = memo(function AppRuleRow({
   rule,
   theme,
   onToggle,
 }: {
-  rule: SplitTunnelRule;
+  rule: SplitTunnelRule & { iconBase64?: string };
   theme: AppTheme;
   onToggle: (packageName: string) => void;
 }) {
@@ -720,10 +765,19 @@ const AppRuleRow = memo(function AppRuleRow({
       style={[
         styles.appRow,
         {
-          backgroundColor: theme.colors.surface,
-          borderColor: theme.colors.separator,
+          backgroundColor: theme.isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.03)',
+          borderColor: theme.isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+          borderWidth: 1,
         },
       ]}>
+      {rule.iconBase64 ? (
+        <Image
+          source={{ uri: rule.iconBase64 }}
+          style={styles.appIconImage}
+        />
+      ) : (
+        <AppIconBadge appName={rule.appName} theme={theme} />
+      )}
       <View style={styles.appInfo}>
         <Text style={[styles.appName, {color: theme.colors.text}]} numberOfLines={1}>
           {rule.appName}
@@ -1042,5 +1096,28 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     paddingVertical: 4,
     paddingLeft: 4,
+  },
+  avatarBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    borderWidth: 1.5,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  avatarText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  appIconImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    marginRight: 12,
   },
 });
