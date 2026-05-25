@@ -18,7 +18,6 @@ import {
   SplitTunnelRule,
   VpnSubscription,
   PanelSettings,
-  LogEvent,
 } from '../types/vpn';
 import i18n from '../locales/i18n';
 import type {ThemeMode} from '../theme/theme';
